@@ -1,0 +1,21 @@
+{
+  "name": "AI Incident incident-1759671923555",
+  "description": "Incident report (0G Storage)",
+  "incidentId": "incident-1759671923555",
+  "severity": "critical",
+  "logUri": "file:///D:/0G/out/storage/incident-1759671923555.log",
+  "logHash": "0x8fb4745593d311d845280ff21d9e370d426b2e41ad1212380176f6e6a27ee7df",
+  "timestamp": 1759671925,
+  "attributes": [
+    {
+      "trait_type": "severity",
+      "value": 2
+    }
+  ],
+  "extra": {},
+  "storage": {
+    "provider": "local",
+    "rootHash": null,
+    "size": 67
+  }
+}

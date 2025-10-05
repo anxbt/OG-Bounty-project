@@ -1,0 +1,54 @@
+Highlight key features:
+"Here's our real-time dashboard showing AI incidents"
+"Each incident becomes a verifiable NFT with immutable proof"
+"Stats show total incidents, critical alerts, and recent activity"
+Click "Report Incident" button
+
+Fill out the form: (Show each field clearly)
+
+Title: "GPT Model Hallucination - Financial Data"
+Severity: Critical
+Description: "AI model generated false financial information during customer query, potentially affecting trading decisions"
+Logs: "ERROR: Model confidence: 0.23, Source: unknown, Validation: FAILED, Timestamp: 2025-10-05T10:30:00Z"
+AI Model: "GPT-4"
+Version: "v2.1.0"
+Click "Report Incident"
+
+While submitting, explain:
+
+"Now it's uploading logs to 0G Storage for immutable preservation"
+"Creating metadata with incident details"
+"Minting NFT on 0G blockchain with verifiable proof"
+✅ Show Success & Transaction (60 seconds)
+When success modal appears:
+
+"Success! The incident is now an NFT on 0G blockchain"
+Point out: Token ID, Transaction Hash
+Click "View on 0G Explorer" (if transaction hash available)
+In 0G Explorer:
+
+"Here's the actual blockchain transaction"
+"This proves the incident was recorded immutably"
+"Anyone can verify this data independently"
+🔍 Verify Dashboard Update (45 seconds)
+Close modal and return to dashboard
+Show updated data:
+"Dashboard now shows our new incident"
+"Stats have updated in real-time"
+"This data comes directly from the blockchain"
+🎯 Technical Highlights (90 seconds)
+Open terminal/backend logs (briefly)
+
+"Backend shows 0G Storage upload successful"
+"Smart contract interaction completed"
+Explain 0G advantages:
+
+"0G Storage: Decentralized, permanent log storage"
+"0G Blockchain: High-performance, low-cost transactions"
+"Future: 0G Compute for automated incident analysis"
+Summarize impact:
+"iSentinel creates accountability for AI systems"
+"Every failure becomes transferable, queryable evidence"
+"Built on 0G's full decentralized infrastructure"
+"Ready for enterprise AI governance and compliance"
+📋 Demo Checklist

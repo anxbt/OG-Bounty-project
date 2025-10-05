@@ -1,0 +1,16 @@
+{
+  "name": "AI Incident incident-1759671163983",
+  "description": "Incident report (mock)",
+  "incidentId": "incident-1759671163983",
+  "severity": "critical",
+  "logUri": "file:///D:/0G/out/storage/incident-1759671163983.log",
+  "logHash": "0x9a09e5bdf064805a7114ce9708ec374f83ca8c6f274d2805485135880dd920e8",
+  "timestamp": 1759671163,
+  "attributes": [
+    {
+      "trait_type": "severity",
+      "value": 2
+    }
+  ],
+  "extra": {}
+}
