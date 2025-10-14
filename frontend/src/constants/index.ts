@@ -1,4 +1,13 @@
-export const CONTRACT_ADDRESS = '0x455163a08a8E786730607C5B1CC4E587837a1F57';
+// 0G iNFT Contract (with Oracle integration)
+export const INFT_CONTRACT_ADDRESS = '0x5Ea36756B36dd41622b9C41FcD1a137f96954A06';
+export const ORACLE_ADDRESS = '0x84c8542d439dA3cA5CaBE76b303444f66f190Db5';
+
+// Legacy contract (standard ERC721)
+export const LEGACY_CONTRACT_ADDRESS = '0x455163a08a8E786730607C5B1CC4E587837a1F57';
+
+// Use iNFT by default
+export const CONTRACT_ADDRESS = INFT_CONTRACT_ADDRESS;
+
 export const RPC_URL = 'https://evmrpc-testnet.0g.ai';
 export const CHAIN_ID = 16602;
 export const EXPLORER_URL = 'https://chainscan-galileo.0g.ai';
@@ -27,23 +36,25 @@ export const SEVERITY_COLORS = {
 } as const;
 
 export const CONTRACT_ABI = [
+  // iNFT specific functions
   {
     "inputs": [{"internalType": "uint256", "name": "tokenId", "type": "uint256"}],
-    "name": "getIncident",
-    "outputs": [
-      {
-        "components": [
-          {"internalType": "string", "name": "incidentId", "type": "string"},
-          {"internalType": "bytes32", "name": "logHash", "type": "bytes32"},
-          {"internalType": "uint8", "name": "severity", "type": "uint8"},
-          {"internalType": "uint64", "name": "timestamp", "type": "uint64"}
-        ],
-        "internalType": "struct IncidentNFT.Incident",
-        "name": "",
-        "type": "tuple"
-      },
-      {"internalType": "string", "name": "", "type": "string"}
-    ],
+    "name": "getMetadataHash",
+    "outputs": [{"internalType": "bytes32", "name": "", "type": "bytes32"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{"internalType": "uint256", "name": "tokenId", "type": "uint256"}],
+    "name": "getEncryptedURI",
+    "outputs": [{"internalType": "string", "name": "", "type": "string"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{"internalType": "uint256", "name": "tokenId", "type": "uint256"}],
+    "name": "tokenURI",
+    "outputs": [{"internalType": "string", "name": "", "type": "string"}],
     "stateMutability": "view",
     "type": "function"
   },
@@ -65,13 +76,18 @@ export const CONTRACT_ABI = [
     "anonymous": false,
     "inputs": [
       {"indexed": true, "internalType": "uint256", "name": "tokenId", "type": "uint256"},
-      {"indexed": false, "internalType": "string", "name": "incidentId", "type": "string"},
-      {"indexed": false, "internalType": "string", "name": "logHash", "type": "string"},
-      {"indexed": false, "internalType": "uint8", "name": "severity", "type": "uint8"},
-      {"indexed": false, "internalType": "string", "name": "tokenURI", "type": "string"},
-      {"indexed": false, "internalType": "uint256", "name": "timestamp", "type": "uint256"}
+      {"indexed": true, "internalType": "address", "name": "executor", "type": "address"}
     ],
-    "name": "IncidentMinted",
+    "name": "UsageAuthorized",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {"indexed": true, "internalType": "uint256", "name": "tokenId", "type": "uint256"},
+      {"indexed": false, "internalType": "bytes32", "name": "newHash", "type": "bytes32"}
+    ],
+    "name": "MetadataUpdated",
     "type": "event"
   },
   {

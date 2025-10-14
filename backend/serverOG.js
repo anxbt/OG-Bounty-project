@@ -30,16 +30,21 @@ function mintIncident(incident, cb) {
   
   const payload = JSON.stringify({ ...incident, incidentId });
   const network = incident?.network || process.env.NETWORK || "og";
-  const address = incident?.contract || process.env.INCIDENT_NFT_ADDRESS || "";
+  // Use INFT contract address if available, fallback to old contract
+  const address = incident?.contract || process.env.INFT_ADDRESS || process.env.INCIDENT_NFT_ADDRESS || "";
 
   const env = {
     ...process.env,
     INCIDENT_PAYLOAD: payload,
-    INCIDENT_NFT_ADDRESS: address,
+    INFT_ADDRESS: address,
+    INCIDENT_NFT_ADDRESS: address, // Keep for backward compatibility
     NETWORK: network,
   };
 
-  const child = spawn("node", ["scripts/mintIncident.js", "--network", network], {
+  // Use the new INFT minting script if INFT address is set
+  const scriptPath = process.env.INFT_ADDRESS ? "scripts/mintIncidentINFT.js" : "scripts/mintIncident.js";
+  
+  const child = spawn("node", [scriptPath, "--network", network], {
     env,
     shell: true,
     stdio: ["ignore", "pipe", "pipe"],
@@ -49,7 +54,7 @@ function mintIncident(incident, cb) {
   child.stderr.on("data", (d) => process.stderr.write(d));
   child.on("close", (code) => {
     if (code === 0) {
-      console.log(`✅ Incident ${incidentId} minted successfully`);
+      console.log(`✅ Incident ${incidentId} minted as iNFT successfully`);
     }
     cb(code, incidentId);
   });
@@ -169,5 +174,9 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, () => {
   console.log(`🚀 iSentinel backend listening on :${PORT}`);
   console.log(`📡 0G Storage integration enabled`);
-  console.log(`🔗 Contract: ${process.env.INCIDENT_NFT_ADDRESS || 'Not set'}`);
+  console.log(`🎨 iNFT Contract: ${process.env.INFT_ADDRESS || 'Not set'}`);
+  console.log(`📡 Oracle: ${process.env.ORACLE_ADDRESS || 'Not set'}`);
+  if (process.env.INFT_ADDRESS) {
+    console.log(`✨ Using advanced 0G iNFT with oracle verification`);
+  }
 });

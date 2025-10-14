@@ -29,7 +29,9 @@
 		"compile": "hardhat compile",
 		"deploy:incident:local": "node scripts/deployIncident.js --network localhost",
 		"deploy:incident:og": "node scripts/deployIncident.js --network og",
+		"deploy:inft": "node scripts/deployINFT.js --network og",
 		"mint:incident": "node scripts/mintIncident.js --network og",
+		"mint:inft": "node scripts/mintIncidentINFT.js --network og",
 		"backend": "node backend/server.js",
 		"backend:og": "node backend/serverOG.js"
 	}

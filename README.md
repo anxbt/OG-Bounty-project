@@ -24,17 +24,23 @@ iSentinel creates accountability for AI systems by minting immutable NFT records
 | **Currency Symbol** | A0GI |
 | **Block Explorer** | https://chainscan-galileo.0g.ai |
 
-### **Current Contract Deployment**
+### **Current Contract Deployment (iNFT System)**
 
-| Detail | Value |
-|--------|-------|
-| **Contract Address** | `0x455163a08a8E786730607C5B1CC4E587837a1F57` |
-| **Deployment Block** | `2286741` |
-| **Deployment Date** | October 14, 2025 |
-| **Deployment TX** | `0x782b2222448c0ea5576b5cbba6553fa2af3814547b0bddeda8923199073d8cad` |
-| **Network** | 0G Galileo Testnet |
+| Contract | Address | Purpose |
+|----------|---------|---------|
+| **🎨 INFT (iNFT)** | `0x5Ea36756B36dd41622b9C41FcD1a137f96954A06` | Advanced NFT with oracle + encryption |
+| **📡 MockOracle** | `0x84c8542d439dA3cA5CaBE76b303444f66f190Db5` | Proof verification for secure transfers |
+| **🔖 Legacy IncidentNFT** | `0x455163a08a8E786730607C5B1CC4E587837a1F57` | Original standard ERC721 (deprecated) |
 
-🔍 **Verify on Explorer**: [View Contract](https://chainscan-galileo.0g.ai/address/0x455163a08a8E786730607C5B1CC4E587837a1F57)
+**Deployment Date:** October 14, 2025  
+**Network:** 0G Galileo Testnet  
+**iNFT Features:** Oracle integration, encrypted metadata, usage authorization  
+
+🔍 **Verify on Explorer**: 
+- [View iNFT Contract](https://chainscan-galileo.0g.ai/address/0x5Ea36756B36dd41622b9C41FcD1a137f96954A06)
+- [View Oracle Contract](https://chainscan-galileo.0g.ai/address/0x84c8542d439dA3cA5CaBE76b303444f66f190Db5)
+
+📖 **Learn More:** See [INFT_IMPLEMENTATION.md](./INFT_IMPLEMENTATION.md) for complete iNFT documentation
 
 ---
 
@@ -83,13 +89,14 @@ iSentinel creates accountability for AI systems by minting immutable NFT records
 - **Real-time Dashboard**: Live blockchain data with incident analytics
 - **Explorer Integration**: Direct links to 0G blockchain explorer for verification
 
-### Tech Stack
-- **Blockchain**: 0G Galileo Testnet (Chain ID: 16602)
-- **Storage**: 0G Storage SDK for decentralized file storage
-- **Smart Contract**: ERC721 NFT contract for incident records
-- **Backend**: Node.js with 0G Storage integration
+### Tech Stack (75% 0G Integration)
+- **Blockchain**: 0G Galileo Testnet (Chain ID: 16602) ✅
+- **Storage**: 0G Storage SDK for decentralized file storage ✅
+- **Smart Contract**: 0G iNFT with Oracle integration ✅
+- **Backend**: Node.js with 0G Storage + iNFT integration
 - **Frontend**: React + TypeScript + Tailwind CSS
 - **Wallet**: MetaMask integration
+- **Compute**: 0G Compute (Planned for AI verification) ⏳
 
 ## ⚡ Quick Start
 
@@ -190,7 +197,11 @@ OG_RPC_URL=https://evmrpc-testnet.0g.ai
 CHAIN_ID=16602
 PRIVATE_KEY=your_private_key_here
 
-# Current Contract (Deployed Oct 14, 2025 - Block 2286741)
+# iNFT System (Deployed Oct 14, 2025)
+ORACLE_ADDRESS=0x84c8542d439dA3cA5CaBE76b303444f66f190Db5
+INFT_ADDRESS=0x5Ea36756B36dd41622b9C41FcD1a137f96954A06
+
+# Legacy contract (standard ERC721)
 INCIDENT_NFT_ADDRESS=0x455163a08a8E786730607C5B1CC4E587837a1F57
 
 # 0G Storage Configuration

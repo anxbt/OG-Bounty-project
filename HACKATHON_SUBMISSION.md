@@ -33,32 +33,39 @@ AI failures are hidden, unverifiable, lack standardized tracking. Companies need
 ## Technologies
 
 **Blockchain:** 0G Galileo Testnet, Solidity 0.8.28, Hardhat 3.0.6, Ethers.js 6.15.0, OpenZeppelin 5.4.0
-**0G Ecosystem:** 0G Storage SDK, Storage Nodes, Explorer
+**0G Ecosystem:** 0G Storage SDK, 0G iNFT Protocol, Oracle Integration, Storage Nodes, Explorer
+**Smart Contracts:** iNFT (Advanced NFT), MockOracle (Proof Verification)
 **Backend:** Node.js 20.x, HTTP server, child processes
 **Frontend:** React 18.3.1, TypeScript 5.5.3, Vite 5.4.2, Tailwind CSS 3.4.1
 **Tools:** ESLint, MetaMask, VS Code, PowerShell
 
 ## How we built it
 
-**Architecture:** User → Backend → 0G Storage → Smart Contract → NFT
+**Architecture:** User → Backend → 0G Storage → iNFT Contract → Oracle → NFT
 
 ```solidity
-contract IncidentNFT {
-    struct Incident {
-        string incidentId;
-        bytes32 logHash;
-        uint8 severity;
-        uint64 timestamp;
-    }
+contract INFT {
+    // Advanced iNFT with oracle integration
+    address public oracle;
+    mapping(uint256 => bytes32) private _metadataHashes;
+    mapping(uint256 => string) private _encryptedURIs;
+    mapping(uint256 => mapping(address => bytes)) private _authorizations;
+    
+    function mint(address to, string calldata encryptedURI, bytes32 metadataHash) 
+        external onlyOwner returns (uint256);
+    
+    function transfer(..., bytes calldata proof) 
+        external nonReentrant;
 }
 ```
 
 **Process:**
-1. Smart Contract: ERC721 NFT with incident metadata
-2. Storage: Upload logs to 0G Storage via SDK  
-3. Backend: Node.js API with minting pipeline
+1. Smart Contracts: iNFT with oracle + MockOracle for proof verification
+2. Storage: Upload logs & metadata to 0G Storage via SDK  
+3. Backend: Node.js API with iNFT minting pipeline
 4. Frontend: React UI with ethers.js integration
 5. Wallet: MetaMask connection with network switching
+6. Security: Oracle-based proof verification for transfers
 
 ## What we learned
 
