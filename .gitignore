@@ -1,6 +1,5 @@
 # Node modules
 /node_modules
-/frontend/node_modules
 
 # Compilation output
 /dist

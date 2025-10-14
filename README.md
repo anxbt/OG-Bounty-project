@@ -2,7 +2,64 @@
 
 **Turn every AI failure into an intelligent, verifiable NFT on 0G blockchain**
 
+> **⚠️ FOR JUDGES**: Having testnet issues? See [JUDGE_SETUP_GUIDE.md](./JUDGE_SETUP_GUIDE.md) for quick solutions!
+
 iSentinel creates accountability for AI systems by minting immutable NFT records of every incident, complete with verifiable proof stored on 0G's decentralized infrastructure.
+
+---
+
+## 📡 **Network Configuration**
+
+**⚠️ IMPORTANT - Testnet Migration Notice:**
+
+> **Note**: The 0G Galileo testnet recently underwent infrastructure changes. We redeployed the contract on **October 14, 2025** to ensure full functionality. The new contract address below is active and verified. Our demo video shows the complete live flow with real blockchain transactions.
+
+### **Required Network Settings**
+
+| Parameter | Value |
+|-----------|-------|
+| **Network Name** | 0G Galileo Testnet |
+| **RPC URL** | `https://evmrpc-testnet.0g.ai` |
+| **Chain ID** | `16602` |
+| **Currency Symbol** | A0GI |
+| **Block Explorer** | https://chainscan-galileo.0g.ai |
+
+### **Current Contract Deployment**
+
+| Detail | Value |
+|--------|-------|
+| **Contract Address** | `0x455163a08a8E786730607C5B1CC4E587837a1F57` |
+| **Deployment Block** | `2286741` |
+| **Deployment Date** | October 14, 2025 |
+| **Deployment TX** | `0x782b2222448c0ea5576b5cbba6553fa2af3814547b0bddeda8923199073d8cad` |
+| **Network** | 0G Galileo Testnet |
+
+🔍 **Verify on Explorer**: [View Contract](https://chainscan-galileo.0g.ai/address/0x455163a08a8E786730607C5B1CC4E587837a1F57)
+
+---
+
+## 🚨 Judge Quick Start (2 minutes)
+
+**If you're experiencing testnet issues mentioned in feedback:**
+
+1. **Run automatic setup**:
+   ```bash
+   # Windows
+   quick-demo-setup.bat
+   
+   # Linux/Mac
+   bash quick-demo-setup.sh
+   ```
+
+2. **Alternative - Mock Demo** (no blockchain needed):
+   ```bash
+   node backend/test-server.js  # Terminal 1
+   cd frontend && pnpm run dev  # Terminal 2
+   ```
+
+3. **Open**: http://localhost:5173
+
+**Full solutions in [JUDGE_SETUP_GUIDE.md](./JUDGE_SETUP_GUIDE.md)**
 
 ## � Table of Contents
 
@@ -129,15 +186,16 @@ notepad .env
 ### Required Environment Variables
 ```env
 # Blockchain Configuration
-RPC_URL=https://evmrpc-testnet.0g.ai
+OG_RPC_URL=https://evmrpc-testnet.0g.ai
 CHAIN_ID=16602
 PRIVATE_KEY=your_private_key_here
-INCIDENT_NFT_ADDRESS=0x00fF3A9d6850CdcE1f4920FB029c60568314B36E
+
+# Current Contract (Deployed Oct 14, 2025 - Block 2286741)
+INCIDENT_NFT_ADDRESS=0x455163a08a8E786730607C5B1CC4E587837a1F57
 
 # 0G Storage Configuration
-ZG_STORAGE_URL=https://chainscan-galileo.0g.ai
-ZG_STORAGE_FLOW_ADDRESS=0x0460aA47b41a66694c0a73f667a1b795A5ED3556
-ZG_INDEXER_ENDPOINT=https://indexer-storage-testnet-standard.0g.ai
+OG_STORAGE_URL=https://indexer-storage-testnet-turbo.0g.ai
+OG_COMPUTE_URL=https://compute-testnet.0g.ai
 
 # API Configuration
 PORT=8787
@@ -180,7 +238,7 @@ node backend/serverOG.js
 # You should see:
 # 🚀 iSentinel backend listening on :8787
 # 📡 0G Storage integration enabled
-# 🔗 Contract: 0x00fF3A9d6850CdcE1f4920FB029c60568314B36E
+# 🔗 Contract: 0x455163a08a8E786730607C5B1CC4E587837a1F57
 ```
 
 #### Start Frontend Development Server
@@ -443,7 +501,9 @@ Create `.env` file:
 PRIVATE_KEY=your_private_key_here
 OG_RPC_URL=https://evmrpc-testnet.0g.ai
 OG_STORAGE_URL=https://indexer-storage-testnet-turbo.0g.ai
-INCIDENT_NFT_ADDRESS=0x00fF3A9d6850CdcE1f4920FB029c60568314B36E
+
+# Current Contract (Deployed Oct 14, 2025)
+INCIDENT_NFT_ADDRESS=0x455163a08a8E786730607C5B1CC4E587837a1F57
 ```
 
 ---
@@ -506,7 +566,7 @@ function mintIncident(
 ) external onlyOwner returns (uint256)
 ```
 
-**Live Contract**: `0x00fF3A9d6850CdcE1f4920FB029c60568314B36E` on 0G Galileo testnet
+**Live Contract**: `0x455163a08a8E786730607C5B1CC4E587837a1F57` (Block 2286741) on 0G Galileo testnet
 
 ### 0G Storage Integration
 

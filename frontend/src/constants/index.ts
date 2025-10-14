@@ -1,4 +1,4 @@
-export const CONTRACT_ADDRESS = '0x00fF3A9d6850CdcE1f4920FB029c60568314B36E';
+export const CONTRACT_ADDRESS = '0x455163a08a8E786730607C5B1CC4E587837a1F57';
 export const RPC_URL = 'https://evmrpc-testnet.0g.ai';
 export const CHAIN_ID = 16602;
 export const EXPLORER_URL = 'https://chainscan-galileo.0g.ai';

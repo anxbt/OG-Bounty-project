@@ -1,5 +1,5 @@
 import { ethers } from 'ethers';
-import { Incident, ReportIncidentData, BackendIncidentResponse, SeverityType } from '../types';
+import { Incident, ReportIncidentData, BackendIncidentResponse } from '../types';
 import { BACKEND_API_URL, CONTRACT_ADDRESS, RPC_URL, CONTRACT_ABI } from '../constants';
 
 // Create provider for blockchain interactions
@@ -17,10 +17,7 @@ export const fetchIncidents = async (filters?: {
     const response = await fetch(`${BACKEND_API_URL}/incidents`);
     if (response.ok) {
       const incidents = await response.json();
-      const normalizedIncidents = Array.isArray(incidents)
-        ? incidents.map(normalizeBackendIncident)
-        : [];
-      return applyClientFilters(normalizedIncidents, filters);
+      return applyClientFilters(incidents, filters);
     }
   } catch (error) {
     console.warn('Backend API not available, falling back to blockchain data');
@@ -28,100 +25,6 @@ export const fetchIncidents = async (filters?: {
 
   // Fallback: Read directly from blockchain
   return await fetchIncidentsFromBlockchain(filters);
-};
-
-interface BackendIncident {
-  incidentId?: string;
-  id?: string;
-  tokenId?: number | string;
-  token_id?: number | string;
-  title?: string;
-  description?: string;
-  logs?: unknown;
-  severity?: string | number;
-  timestamp?: string | number;
-  created_at?: string | number;
-  txHash?: string;
-  tx_hash?: string;
-  logHash?: string;
-  log_hash?: string;
-  owner?: string;
-  ai_model?: string | null;
-  aiModel?: string | null;
-  ai_version?: string | null;
-  aiVersion?: string | null;
-}
-
-const normalizeBackendIncident = (incident: BackendIncident): Incident => {
-  const resolveSeverity = (value: any): SeverityType => {
-    if (typeof value === 'string') {
-      const lower = value.toLowerCase();
-      if (lower === 'critical' || lower === 'warning' || lower === 'info') {
-        return lower as SeverityType;
-      }
-    }
-
-    if (typeof value === 'number') {
-      const mapping: SeverityType[] = ['info', 'warning', 'critical'];
-      return mapping[value] ?? 'info';
-    }
-
-    return 'info';
-  };
-
-  const toIsoString = (value: string | number | Date | undefined): string => {
-    if (value instanceof Date) {
-      return Number.isNaN(value.getTime()) ? new Date().toISOString() : value.toISOString();
-    }
-
-    const date = value !== undefined ? new Date(value) : new Date();
-    return Number.isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString();
-  };
-
-  const timestampSource = incident?.timestamp ?? incident?.created_at ?? Date.now();
-  const timestamp = toIsoString(timestampSource);
-
-  const createdAt = incident?.created_at ? toIsoString(incident.created_at) : timestamp;
-
-  const rawTokenId = incident?.token_id ?? incident?.tokenId;
-  const parsedTokenId =
-    rawTokenId === undefined || rawTokenId === null || rawTokenId === ''
-      ? null
-      : Number(rawTokenId);
-  const tokenId = Number.isNaN(parsedTokenId) ? null : parsedTokenId;
-
-  const logsValue = incident?.logs;
-  const logs =
-    typeof logsValue === 'string'
-      ? logsValue
-      : logsValue
-      ? JSON.stringify(logsValue, null, 2)
-      : 'No logs available';
-
-  return {
-    id: String(
-      incident?.incidentId ||
-        incident?.id ||
-        (tokenId !== null ? `token-${tokenId}` : `incident-${timestampSource}`)
-    ),
-    severity: resolveSeverity(incident?.severity),
-    timestamp,
-    token_id: tokenId,
-    title: incident?.title ?? 'Untitled Incident',
-    description:
-      typeof incident?.description === 'string'
-        ? incident.description
-        : incident?.description
-        ? JSON.stringify(incident.description, null, 2)
-        : 'No description provided.',
-    logs,
-    tx_hash: incident?.txHash ?? incident?.tx_hash ?? null,
-    log_hash: incident?.logHash ?? incident?.log_hash ?? null,
-    owner: incident?.owner ?? null,
-    ai_model: incident?.ai_model ?? incident?.aiModel ?? null,
-    ai_version: incident?.ai_version ?? incident?.aiVersion ?? null,
-    created_at: createdAt,
-  };
 };
 
 // Helper function to fetch incidents directly from blockchain events
@@ -164,7 +67,7 @@ const fetchIncidentsFromBlockchain = async (filters?: {
         }
         
         const incident: Incident = {
-          id: incidentId,
+          id: incidentId || `fallback-${tokenId}-${timestamp}`,
           severity: ['info', 'warning', 'critical'][severity] as any,
           timestamp: new Date(Number(timestamp) * 1000).toISOString(),
           token_id: Number(tokenId),
@@ -345,11 +248,11 @@ export const fetchUserIncidents = async (userAddress: string): Promise<Incident[
         
         // Try to get full incident data from backend first
         let incident: Incident = {
-          id: incidentStruct.incidentId,
+          id: incidentStruct.incidentId || `user-incident-${tokenId}`,
           severity: ['info', 'warning', 'critical'][incidentStruct.severity] as any,
           timestamp: new Date(Number(incidentStruct.timestamp) * 1000).toISOString(),
           token_id: Number(tokenId),
-          title: `Incident ${incidentStruct.incidentId}`,
+          title: `Incident ${incidentStruct.incidentId || tokenId}`,
           description: 'User-owned incident NFT',
           logs: 'Log data stored off-chain',
           tx_hash: null,

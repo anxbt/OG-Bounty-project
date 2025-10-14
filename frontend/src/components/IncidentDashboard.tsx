@@ -258,11 +258,11 @@ export default function IncidentDashboard({ onNavigateToLanding }: IncidentDashb
           </div>
         ) : (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredIncidents.map((incident) => {
+            {filteredIncidents.map((incident, index) => {
               const severityColors = SEVERITY_COLORS[incident.severity];
               return (
                 <div
-                  key={incident.id}
+                  key={incident.id || `incident-${index}`}
                   className={`bg-white rounded-xl shadow-sm border-l-4 ${severityColors.border} border-t border-r border-b border-gray-200 p-6 hover:shadow-md transition-shadow cursor-pointer`}
                   onClick={() => setSelectedIncident(incident)}
                 >
@@ -287,7 +287,7 @@ export default function IncidentDashboard({ onNavigateToLanding }: IncidentDashb
                   </p>
 
                   <div className="flex items-center justify-between text-xs text-gray-500">
-                    <div className="font-mono">{incident.id.slice(0, 20)}...</div>
+                    <div className="font-mono">{incident.id ? incident.id.slice(0, 20) : 'No ID'}...</div>
                     <div>{formatDate(incident.timestamp)}</div>
                   </div>
 

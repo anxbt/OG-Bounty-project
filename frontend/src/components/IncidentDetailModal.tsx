@@ -62,9 +62,9 @@ export default function IncidentDetailModal({ incident, onClose }: IncidentDetai
             <div className="bg-gray-50 rounded-lg p-4">
               <div className="text-sm text-gray-600 mb-1">Incident ID</div>
               <div className="flex items-center gap-2">
-                <div className="font-mono text-sm text-gray-900 break-all">{incident.id}</div>
+                <div className="font-mono text-sm text-gray-900 break-all">{incident.id || 'No ID available'}</div>
                 <button
-                  onClick={() => copyToClipboard(incident.id, 'id')}
+                  onClick={() => copyToClipboard(incident.id || '', 'id')}
                   className="p-1 hover:bg-gray-200 rounded transition-colors"
                 >
                   {copiedField === 'id' ? (

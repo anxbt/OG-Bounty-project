@@ -112,9 +112,9 @@ export default function UserIncidents() {
           </div>
         ) : (
           <div className="space-y-3">
-            {incidents.map((incident) => (
+            {incidents.map((incident, index) => (
               <div
-                key={incident.id}
+                key={incident.id || `user-incident-${index}`}
                 className={`p-4 rounded-lg border-l-4 ${SEVERITY_COLORS[incident.severity].bg} ${SEVERITY_COLORS[incident.severity].border} hover:shadow-md transition-all cursor-pointer group`}
                 onClick={() => setSelectedIncident(incident)}
               >
