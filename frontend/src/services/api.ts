@@ -8,85 +8,199 @@ const provider = new ethers.JsonRpcProvider(RPC_URL);
 // Create contract instance
 const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
 
+// Cache for blockchain data to prevent multiple simultaneous fetches
+let blockchainCachePromise: Promise<Incident[]> | null = null;
+let blockchainCacheTime: number = 0;
+const CACHE_DURATION = 30000; // 30 seconds
+
 export const fetchIncidents = async (filters?: {
   severity?: string;
   owner?: string;
 }): Promise<Incident[]> => {
   try {
     // First, try to get incidents from backend API
+    console.log('🔍 Fetching incidents from backend API...');
     const response = await fetch(`${BACKEND_API_URL}/incidents`);
     if (response.ok) {
       const incidents = await response.json();
-      return applyClientFilters(incidents, filters);
+      console.log(`📦 Backend returned ${incidents.length} incidents`);
+      
+      // If backend has incidents, use them
+      if (incidents.length > 0) {
+        return applyClientFilters(incidents, filters);
+      }
+      
+      // If backend is empty, fall through to blockchain query
+      console.log('⚠️ Backend empty, falling back to blockchain...');
     }
   } catch (error) {
-    console.warn('Backend API not available, falling back to blockchain data');
+    console.warn('❌ Backend API not available, falling back to blockchain data');
+  }
+
+  // Use cached promise if a fetch is already in progress
+  if (blockchainCachePromise && (Date.now() - blockchainCacheTime) < CACHE_DURATION) {
+    console.log('♻️ Using cached/in-progress blockchain fetch...');
+    const cachedData = await blockchainCachePromise;
+    return applyClientFilters(cachedData, filters);
   }
 
   // Fallback: Read directly from blockchain
-  return await fetchIncidentsFromBlockchain(filters);
+  blockchainCacheTime = Date.now();
+  blockchainCachePromise = fetchIncidentsFromBlockchain();
+  
+  try {
+    const data = await blockchainCachePromise;
+    return applyClientFilters(data, filters);
+  } catch (error) {
+    blockchainCachePromise = null; // Clear cache on error
+    throw error;
+  }
 };
 
 // Helper function to fetch incidents directly from blockchain events
-const fetchIncidentsFromBlockchain = async (filters?: {
-  severity?: string;
-  owner?: string;
-}): Promise<Incident[]> => {
+const fetchIncidentsFromBlockchain = async (): Promise<Incident[]> => {
   try {
-    // Get IncidentMinted events from the contract
-    const filter = contract.filters.IncidentMinted();
-    const events = await contract.queryFilter(filter, -1000); // Last 1k blocks for faster loading
+    console.log('📡 [START] Fetching incidents from blockchain...');
+    const startTime = Date.now();
+    
+    // For iNFT contract, we need to query Transfer events (minting)
+    // Transfer from address(0) indicates minting
+    const filter = contract.filters.Transfer(ethers.ZeroAddress, null, null);
+    
+    // Query from contract deployment block (Oct 14, 2025: block ~2286000) to catch ALL NFTs
+    // This is more efficient than querying -700k blocks
+    const DEPLOYMENT_BLOCK = 2286000; // iNFT contract deployed around this block
+    console.log(`🔍 Querying from deployment block ${DEPLOYMENT_BLOCK} to latest...`);
+    const events = await contract.queryFilter(filter, DEPLOYMENT_BLOCK);
+    
+    console.log(`✅ Found ${events.length} Transfer (mint) events`);
     
     const incidents: Incident[] = [];
     
     for (const event of events.reverse()) { // Reverse to get newest first
       if ('args' in event && event.args) {
-        const [tokenId, incidentId, logHash, severity, tokenURI, timestamp] = event.args;
+        const [, , tokenId] = event.args;
         
-        // Try to fetch metadata from tokenURI
-        let title = `Incident ${incidentId}`;
-        let description = 'AI incident detected';
-        let logs = 'Log data stored off-chain';
+        console.log(`Processing tokenId ${tokenId}...`);
+        
+        // Try to get metadata from the contract
+        let incidentTitle = `Incident #${tokenId}`;
+        let incidentDescription = 'AI incident detected';
+        let incidentLogs = 'Log data stored off-chain';
+        let incidentSeverity: 'info' | 'warning' | 'critical' = 'info';
         
         try {
-          if (tokenURI.startsWith('0g://')) {
-            // For 0G storage, we'd need to implement download
-            title = `AI Incident ${incidentId}`;
-            description = 'Incident stored on 0G Storage';
-          } else if (tokenURI.startsWith('file://')) {
-            // Local file - try to read it
-            const response = await fetch(tokenURI);
-            if (response.ok) {
-              const metadata = await response.json();
-              title = metadata.name || title;
-              description = metadata.description || description;
+          // Try to get encrypted URI first (iNFT), then fall back to tokenURI
+          const encryptedURI = await contract.getEncryptedURI(tokenId).catch(() => null);
+          const tokenURI = await contract.tokenURI(tokenId).catch(() => null);
+          
+          const uri = encryptedURI || tokenURI;
+          
+          if (uri) {
+            console.log(`📄 Token ${tokenId} URI:`, uri.substring(0, 60) + '...');
+            
+            // Try to fetch metadata
+            if (uri.startsWith('0g://')) {
+              // 0G storage - use backend to download
+              try {
+                const response = await fetch(`${BACKEND_API_URL}/download?uri=${encodeURIComponent(uri)}`);
+                if (response.ok) {
+                  const data = await response.json();
+                  if (data.ok && data.content) {
+                    const metadata = JSON.parse(data.content);
+                    console.log(`   ✅ Fetched metadata for token ${tokenId}:`, metadata.name);
+                    
+                    // Extract title and description from metadata
+                    incidentTitle = metadata.name || metadata.title || incidentTitle;
+                    incidentDescription = metadata.description || incidentDescription;
+                    
+                    // Map severity string to enum
+                    if (metadata.severity) {
+                      if (metadata.severity === 'critical' || metadata.severity === 2) {
+                        incidentSeverity = 'critical';
+                      } else if (metadata.severity === 'warning' || metadata.severity === 1) {
+                        incidentSeverity = 'warning';
+                      } else {
+                        incidentSeverity = 'info';
+                      }
+                    }
+                    
+                    // Check if logs are embedded or in a separate URI
+                    if (metadata.logs) {
+                      // Logs are embedded in metadata
+                      incidentLogs = metadata.logs;
+                    } else if (metadata.logUri && metadata.logUri.startsWith('0g://')) {
+                      // Logs are in a separate 0G Storage file
+                      console.log(`   📥 Downloading logs from: ${metadata.logUri.substring(0, 50)}...`);
+                      try {
+                        const logsResponse = await fetch(`${BACKEND_API_URL}/download?uri=${encodeURIComponent(metadata.logUri)}`);
+                        if (logsResponse.ok) {
+                          const logsData = await logsResponse.json();
+                          if (logsData.ok && logsData.content) {
+                            incidentLogs = logsData.content;
+                            console.log(`   ✅ Downloaded logs (${logsData.content.length} bytes)`);
+                          }
+                        }
+                      } catch (logsErr) {
+                        console.warn(`   ⚠️ Failed to download logs for token ${tokenId}:`, logsErr);
+                      }
+                    }
+                  }
+                }
+              } catch (err) {
+                console.warn(`Failed to fetch from 0G storage for token ${tokenId}:`, err);
+              }
             }
           }
         } catch (metadataError) {
-          console.warn('Could not fetch metadata:', metadataError);
+          console.warn(`Could not fetch metadata for token ${tokenId}:`, metadataError);
+        }
+        
+        // Get block timestamp
+        const block = await event.getBlock();
+        const blockTimestamp = new Date(block.timestamp * 1000).toISOString();
+        
+        // Try to get the owner
+        let owner: string | null = null;
+        try {
+          owner = await contract.ownerOf(tokenId);
+        } catch {
+          // Token may have been burned
         }
         
         const incident: Incident = {
-          id: incidentId || `fallback-${tokenId}-${timestamp}`,
-          severity: ['info', 'warning', 'critical'][severity] as any,
-          timestamp: new Date(Number(timestamp) * 1000).toISOString(),
+          id: `incident-${tokenId}`,
+          severity: incidentSeverity,
+          timestamp: blockTimestamp,
           token_id: Number(tokenId),
-          title,
-          description,
-          logs,
+          title: incidentTitle,
+          description: incidentDescription,
+          logs: incidentLogs,
           tx_hash: event.transactionHash,
-          log_hash: logHash,
-          owner: null, // Would need to call contract.ownerOf(tokenId) for this
-          created_at: new Date(Number(timestamp) * 1000).toISOString()
+          log_hash: '',
+          owner: owner,
+          created_at: blockTimestamp
         };
+        
+        console.log(`✅ Created incident object:`, {
+          tokenId: incident.token_id,
+          title: incident.title,
+          descriptionLength: incident.description.length,
+          logsLength: incident.logs.length
+        });
         
         incidents.push(incident);
       }
     }
     
-    return applyClientFilters(incidents, filters);
+    console.log(`✅ Fetched ${incidents.length} incidents from blockchain`);
+    console.log(`📋 Sample incident data:`, incidents[0]);
+    console.log(`⏱️ [COMPLETE] Blockchain fetch took ${Date.now() - startTime}ms`);
+    
+    console.log(`🎯 [RETURN] Returning ${incidents.length} incidents (unfiltered)`);
+    return incidents;
   } catch (error) {
-    console.error('Error fetching blockchain incidents:', error);
+    console.error('❌ [ERROR] Error fetching blockchain incidents:', error);
     return [];
   }
 };
@@ -203,106 +317,24 @@ export const getIncidentStats = async (): Promise<{
 // Helper function to get user's owned incidents
 export const fetchUserIncidents = async (userAddress: string): Promise<Incident[]> => {
   try {
-    // Since the contract doesn't implement ERC721Enumerable, we need to use events
-    // to find tokens owned by the user
-    const transferFilter = contract.filters.Transfer(null, userAddress);
-    const transferEvents = await contract.queryFilter(transferFilter, -10000); // Last 10k blocks
+    console.log(`🔍 Fetching incidents for user: ${userAddress}`);
     
-    const ownedTokenIds = new Set<number>();
+    // Fetch ALL incidents once (this includes full metadata from 0G storage)
+    const allIncidents = await fetchIncidentsFromBlockchain();
+    console.log(`📦 Total incidents fetched: ${allIncidents.length}`);
     
-    // Process Transfer events to find currently owned tokens
-    for (const event of transferEvents) {
-      if ('args' in event && event.args) {
-        const [_from, to, tokenId] = event.args;
-        if (to.toLowerCase() === userAddress.toLowerCase()) {
-          ownedTokenIds.add(Number(tokenId));
-        }
-      }
-    }
+    // Filter to only incidents owned by this user
+    const userIncidents = allIncidents.filter(incident => 
+      incident.owner?.toLowerCase() === userAddress.toLowerCase()
+    );
     
-    // Also check for any transfers away from the user
-    const transferAwayFilter = contract.filters.Transfer(userAddress);
-    const transferAwayEvents = await contract.queryFilter(transferAwayFilter, -10000);
+    console.log(`✅ User owns ${userIncidents.length} incident(s)`);
     
-    for (const event of transferAwayEvents) {
-      if ('args' in event && event.args) {
-        const [from, _to, tokenId] = event.args;
-        if (from.toLowerCase() === userAddress.toLowerCase()) {
-          ownedTokenIds.delete(Number(tokenId));
-        }
-      }
-    }
-    
-    const incidents: Incident[] = [];
-    
-    // Get incident data for each owned token
-    for (const tokenId of ownedTokenIds) {
-      try {
-        // Verify current ownership (in case events are out of sync)
-        const currentOwner = await contract.ownerOf(tokenId);
-        if (currentOwner.toLowerCase() !== userAddress.toLowerCase()) {
-          continue; // Skip if no longer owned
-        }
-        
-        const [incidentStruct, _tokenURI] = await contract.getIncident(tokenId);
-        
-        // Try to get full incident data from backend first
-        let incident: Incident = {
-          id: incidentStruct.incidentId || `user-incident-${tokenId}`,
-          severity: ['info', 'warning', 'critical'][incidentStruct.severity] as any,
-          timestamp: new Date(Number(incidentStruct.timestamp) * 1000).toISOString(),
-          token_id: Number(tokenId),
-          title: `Incident ${incidentStruct.incidentId || tokenId}`,
-          description: 'User-owned incident NFT',
-          logs: 'Log data stored off-chain',
-          tx_hash: null,
-          log_hash: incidentStruct.logHash,
-          owner: userAddress,
-          created_at: new Date(Number(incidentStruct.timestamp) * 1000).toISOString()
-        };
-        
-        // Try to fetch full incident data from backend
-        try {
-          console.log('Fetching incidents from backend...');
-          const response = await fetch(`${BACKEND_API_URL}/incidents`);
-          console.log('Backend response status:', response.status);
-          if (response.ok) {
-            const backendIncidents = await response.json();
-            console.log('Backend incidents:', backendIncidents);
-            const matchingIncident = backendIncidents.find((bi: any) => 
-              bi.incidentId === incidentStruct.incidentId || 
-              bi.tokenId === Number(tokenId)
-            );
-            
-            if (matchingIncident) {
-              console.log('Found matching incident:', matchingIncident);
-              incident = {
-                ...incident,
-                title: matchingIncident.title || incident.title,
-                description: matchingIncident.description || incident.description,
-                logs: matchingIncident.logs || incident.logs,
-                ai_model: matchingIncident.ai_model,
-                ai_version: matchingIncident.ai_version
-              };
-            } else {
-              console.log('No matching incident found for:', incidentStruct.incidentId);
-            }
-          } else {
-            console.warn('Backend returned non-OK status:', response.status);
-          }
-        } catch (backendError) {
-          console.warn('Could not fetch from backend:', backendError);
-        }
-        
-        incidents.push(incident);
-      } catch (tokenError) {
-        console.warn('Error fetching token data for token', tokenId, ':', tokenError);
-      }
-    }
-    
-    return incidents.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    return userIncidents.sort((a, b) => 
+      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
   } catch (error) {
-    console.error('Error fetching user incidents:', error);
+    console.error('❌ Error fetching user incidents:', error);
     return [];
   }
 };

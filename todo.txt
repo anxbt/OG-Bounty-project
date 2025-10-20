@@ -1,0 +1,7 @@
+Fix fetchUserIncidents to display minted NFTs
+Harden analytics page for missing data
+Add zero-state message to analytics when no data
+Investigate blank analytics screen
+Ensure minted NFT metadata loads from blockchain
+Add analytics fallback when blockchain incidents empty
+Add blockchain fetch debug logging
