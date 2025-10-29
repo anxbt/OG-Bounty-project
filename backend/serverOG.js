@@ -3,6 +3,9 @@ import http from "http";
 import { spawn } from "child_process";
 import OGStorageManager from '../lib/ogStorage.js';
 import { computeAnalytics } from './computeAnalytics.js';
+import AttestationManager from './attestationManager.js';
+import { ethers } from 'ethers';
+import { analyzeWithGemini, isGeminiAvailable } from './geminiAnalytics.js';
 
 const PORT = process.env.PORT || 8787;
 
@@ -118,6 +121,33 @@ async function downloadFromOG(req, res) {
   }
 }
 
+// Track attestation jobs
+const attestationJobs = new Map();
+let attestationManager = null;
+let contract = null;
+
+// Initialize attestation manager
+try {
+  attestationManager = new AttestationManager(process.env.PRIVATE_KEY);
+  console.log('✅ Attestation Manager initialized');
+  
+  // Initialize contract connection
+  const provider = new ethers.JsonRpcProvider(process.env.OG_RPC_URL);
+  const wallet = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
+  
+  // Load INFT ABI (we'll create a minimal one)
+  const INFT_ABI = [
+    "function addAttestation(uint256 tokenId, bytes32 hash, string calldata uri) external",
+    "function getAttestations(uint256 tokenId) external view returns (tuple(bytes32 hash, string uri, address signer, uint64 timestamp)[])",
+    "event IncidentAttested(uint256 indexed tokenId, bytes32 indexed hash, address indexed signer, string uri, uint64 timestamp)"
+  ];
+  
+  contract = new ethers.Contract(process.env.INFT_ADDRESS, INFT_ABI, wallet);
+  console.log('✅ Contract connection initialized');
+} catch (error) {
+  console.log('⚠️  Attestation Manager initialization failed:', error.message);
+}
+
 const server = http.createServer((req, res) => {
   // Enable CORS for frontend
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -220,6 +250,137 @@ const server = http.createServer((req, res) => {
       const incidents = Array.from(incidentStore.values());
       handleAnalytics(incidents);
     }
+    return;
+  }
+
+  // VISA: New attestation endpoints
+  if (req.method === "POST" && req.url.match(/^\/api\/incident\/\d+\/attest$/)) {
+    const tokenId = parseInt(req.url.split('/')[3]);
+    const jobId = `job-${Date.now()}-${Math.random()}`;
+    
+    // Start async job
+    (async () => {
+      try {
+        if (!attestationManager) {
+          throw new Error('Attestation Manager not initialized');
+        }
+
+        // Get incident from store (try both token_id and tokenId)
+        const incident = Array.from(incidentStore.values())
+          .find(inc => inc.token_id === tokenId || inc.tokenId === tokenId);
+        
+        if (!incident) {
+          throw new Error(`Incident with token ${tokenId} not found in store`);
+        }
+
+        console.log(`📋 Found incident: ${incident.title}`);
+
+        // Query 0G Compute
+        const prompt = `Analyze this AI incident and provide a concise summary and severity score:
+          Title: ${incident.title}
+          Description: ${incident.description}
+          
+          Return in JSON format with:
+          {
+            "summary": "1-2 sentence explanation",
+            "severityScore": number from 1-10,
+            "analysis": "detailed findings"
+          }`;
+
+        console.log('🤖 Requesting 0G Compute analysis...');
+        let aiResponse;
+        let aiSummary;
+        let analysisSource = '0G Compute';
+        
+        try {
+          // PRIMARY: Try 0G Compute first
+          aiResponse = await computeAnalyticsZG.queryComputeModel(prompt);
+          aiSummary = JSON.parse(aiResponse);
+          console.log('✅ 0G Compute analysis successful');
+        } catch (computeError) {
+          console.warn('⚠️ 0G Compute unavailable:', computeError.message);
+          
+          // FALLBACK 1: Try Gemini AI
+          if (isGeminiAvailable()) {
+            try {
+              console.log('🔮 Falling back to Gemini AI...');
+              aiSummary = await analyzeWithGemini(incident);
+              analysisSource = 'Gemini AI (fallback)';
+              console.log('✅ Gemini analysis successful');
+            } catch (geminiError) {
+              console.warn('⚠️ Gemini also failed:', geminiError.message);
+              throw new Error('Both 0G Compute and Gemini unavailable');
+            }
+          } else {
+            // FALLBACK 2: Basic analysis
+            console.log('📊 Using basic analysis fallback');
+            aiSummary = {
+              summary: `${incident.title}. ${incident.description.substring(0, 100)}...`,
+              severityScore: incident.severity === 'critical' ? 9 : incident.severity === 'warning' ? 6 : 3,
+              analysis: 'Automated analysis based on incident metadata',
+              categories: [incident.severity, 'ai-safety']
+            };
+            analysisSource = 'Basic fallback';
+          }
+        }
+        
+        // Add incident context to summary
+        const enrichedSummary = {
+          ...aiSummary,
+          tokenId: tokenId,
+          incidentId: incident.incidentId || incident.id,
+          analysisSource // Track which AI was used
+        };
+        
+        // Create and sign attestation
+        const attestation = await attestationManager.createAttestation(
+          { ...incident, tokenId },
+          enrichedSummary
+        );
+        
+        // Add attestation on-chain
+        console.log('📝 Recording attestation on-chain...');
+        const tx = await contract.addAttestation(
+          tokenId,
+          attestation.hash,
+          attestation.attestationUri
+        );
+
+        console.log(`✅ Attestation complete! Tx: ${tx.hash}`);
+
+        // Update job status
+        attestationJobs.set(jobId, {
+          status: 'complete',
+          ...attestation,
+          txHash: tx.hash
+        });
+
+      } catch (error) {
+        console.error('❌ Attestation failed:', error);
+        attestationJobs.set(jobId, {
+          status: 'failed',
+          error: error.message || String(error)
+        });
+      }
+    })();
+
+    // Return immediately with job ID
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      jobId,
+      status: 'pending',
+      message: 'Attestation generation started'
+    }));
+    return;
+  }
+
+  // VISA: Check attestation status
+  if (req.method === "GET" && req.url.startsWith('/api/attest/')) {
+    const jobId = req.url.split('/')[3];
+    const job = attestationJobs.get(jobId);
+    
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(job || { status: 'not-found' }));
     return;
   }
 

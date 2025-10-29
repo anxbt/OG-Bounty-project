@@ -10,7 +10,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { Incident, SeverityType } from '../types';
-import { fetchIncidents, getIncidentStats } from '../services/api';
+import { fetchIncidentsProgressive, getIncidentStats } from '../services/api';
 import { connectWallet, getConnectedAccount, truncateAddress } from '../utils/wallet';
 import { SEVERITY_COLORS } from '../constants';
 import IncidentDetailModal from './IncidentDetailModal';
@@ -25,6 +25,7 @@ export default function IncidentDashboard({ onNavigateToLanding }: IncidentDashb
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [filteredIncidents, setFilteredIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingProgress, setLoadingProgress] = useState({ current: 0, total: 0 });
   const [stats, setStats] = useState({ total: 0, critical: 0, recent: 0 });
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
   const [showReportForm, setShowReportForm] = useState(false);
@@ -38,11 +39,32 @@ export default function IncidentDashboard({ onNavigateToLanding }: IncidentDashb
 
   const loadIncidents = async () => {
     setLoading(true);
-    const data = await fetchIncidents();
-    setIncidents(data);
-    setFilteredIncidents(data);
-    const statsData = await getIncidentStats();
-    setStats(statsData);
+    setLoadingProgress({ current: 0, total: 0 });
+    
+    // Progressive loading with callbacks
+    const progressiveIncidents: Incident[] = [];
+    
+    await fetchIncidentsProgressive((incident, index, total) => {
+      // Add incident to array progressively
+      progressiveIncidents.push(incident);
+      
+      // Update both the incidents list and progress
+      setIncidents([...progressiveIncidents]);
+      setLoadingProgress({ current: index, total });
+      
+      // Update stats progressively
+      const critical = progressiveIncidents.filter(i => i.severity === 'critical').length;
+      const now = new Date();
+      const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      const recent = progressiveIncidents.filter(i => new Date(i.timestamp) >= twentyFourHoursAgo).length;
+      
+      setStats({
+        total: progressiveIncidents.length,
+        critical,
+        recent
+      });
+    });
+    
     setLoading(false);
   };
 
@@ -243,8 +265,26 @@ export default function IncidentDashboard({ onNavigateToLanding }: IncidentDashb
         </div>
 
         {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <RefreshCw className="w-8 h-8 text-blue-600 animate-spin" />
+          <div className="flex flex-col items-center justify-center py-20">
+            <RefreshCw className="w-8 h-8 text-blue-600 animate-spin mb-4" />
+            {loadingProgress.total > 0 && (
+              <div className="text-center">
+                <p className="text-gray-600 mb-2">
+                  Loading incidents from blockchain...
+                </p>
+                <p className="text-sm text-gray-500">
+                  {loadingProgress.current} of {loadingProgress.total} incidents loaded
+                </p>
+                <div className="w-64 bg-gray-200 rounded-full h-2 mt-3">
+                  <div
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                    style={{
+                      width: `${(loadingProgress.current / loadingProgress.total) * 100}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         ) : filteredIncidents.length === 0 ? (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">

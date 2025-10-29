@@ -2,6 +2,7 @@ import { X, ExternalLink, Copy, CheckCircle } from 'lucide-react';
 import { useState } from 'react';
 import { Incident } from '../types';
 import { SEVERITY_COLORS, EXPLORER_URL } from '../constants';
+import AttestationCard from './AttestationCard';
 
 interface IncidentDetailModalProps {
   incident: Incident;
@@ -178,6 +179,13 @@ export default function IncidentDetailModal({ incident, onClose }: IncidentDetai
               {incident.description}
             </div>
           </div>
+
+          {incident.token_id && (
+            <div>
+              <div className="text-sm font-medium text-gray-700 mb-2">AI Verification</div>
+              <AttestationCard tokenId={incident.token_id} />
+            </div>
+          )}
 
           <div>
             <div className="text-sm font-medium text-gray-700 mb-2">Logs</div>

@@ -11,7 +11,8 @@ const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
 // Cache for blockchain data to prevent multiple simultaneous fetches
 let blockchainCachePromise: Promise<Incident[]> | null = null;
 let blockchainCacheTime: number = 0;
-const CACHE_DURATION = 30000; // 30 seconds
+let blockchainCachedData: Incident[] | null = null;
+const CACHE_DURATION = 300000; // 5 minutes (increased from 30 seconds)
 
 export const fetchIncidents = async (filters?: {
   severity?: string;
@@ -37,28 +38,83 @@ export const fetchIncidents = async (filters?: {
     console.warn('❌ Backend API not available, falling back to blockchain data');
   }
 
-  // Use cached promise if a fetch is already in progress
+  // Use cached promise if a fetch is already in progress or data is still fresh
+  if (blockchainCachedData && (Date.now() - blockchainCacheTime) < CACHE_DURATION) {
+    console.log('♻️ Using cached blockchain data (no re-fetch)');
+    return applyClientFilters(blockchainCachedData, filters);
+  }
+  
   if (blockchainCachePromise && (Date.now() - blockchainCacheTime) < CACHE_DURATION) {
-    console.log('♻️ Using cached/in-progress blockchain fetch...');
+    console.log('♻️ Using in-progress blockchain fetch...');
     const cachedData = await blockchainCachePromise;
     return applyClientFilters(cachedData, filters);
   }
 
   // Fallback: Read directly from blockchain
+  console.log('🔄 Starting fresh blockchain fetch...');
   blockchainCacheTime = Date.now();
   blockchainCachePromise = fetchIncidentsFromBlockchain();
   
   try {
     const data = await blockchainCachePromise;
+    blockchainCachedData = data; // Store in cache
     return applyClientFilters(data, filters);
   } catch (error) {
     blockchainCachePromise = null; // Clear cache on error
+    blockchainCachedData = null;
     throw error;
   }
 };
 
+// NEW: Progressive fetching with callbacks
+export const fetchIncidentsProgressive = async (
+  onProgress: (incident: Incident, index: number, total: number) => void,
+  filters?: {
+    severity?: string;
+    owner?: string;
+  }
+): Promise<Incident[]> => {
+  try {
+    // Check cache first
+    if (blockchainCachedData && (Date.now() - blockchainCacheTime) < CACHE_DURATION) {
+      console.log('♻️ Using cached data for progressive display');
+      // Emit cached incidents progressively for UI animation
+      blockchainCachedData.forEach((inc: Incident, idx: number) => {
+        setTimeout(() => {
+          onProgress(inc, idx + 1, blockchainCachedData!.length);
+        }, idx * 50); // 50ms delay between each for smooth animation
+      });
+      return applyClientFilters(blockchainCachedData, filters);
+    }
+    
+    // Try backend first (fast path)
+    const response = await fetch(`${BACKEND_API_URL}/incidents`);
+    if (response.ok) {
+      const incidents = await response.json();
+      if (incidents.length > 0) {
+        // Emit all incidents quickly
+        incidents.forEach((inc: Incident, idx: number) => {
+          onProgress(inc, idx + 1, incidents.length);
+        });
+        return applyClientFilters(incidents, filters);
+      }
+    }
+  } catch (error) {
+    console.warn('Backend not available, using blockchain...');
+  }
+
+  // Blockchain fetch with progress callbacks
+  blockchainCacheTime = Date.now();
+  blockchainCachePromise = fetchIncidentsFromBlockchain(onProgress);
+  const allIncidents = await blockchainCachePromise;
+  blockchainCachedData = allIncidents; // Cache the result
+  return applyClientFilters(allIncidents, filters);
+};
+
 // Helper function to fetch incidents directly from blockchain events
-const fetchIncidentsFromBlockchain = async (): Promise<Incident[]> => {
+const fetchIncidentsFromBlockchain = async (
+  onProgress?: (incident: Incident, index: number, total: number) => void
+): Promise<Incident[]> => {
   try {
     console.log('📡 [START] Fetching incidents from blockchain...');
     const startTime = Date.now();
@@ -76,12 +132,15 @@ const fetchIncidentsFromBlockchain = async (): Promise<Incident[]> => {
     console.log(`✅ Found ${events.length} Transfer (mint) events`);
     
     const incidents: Incident[] = [];
+    const totalEvents = events.length;
     
-    for (const event of events.reverse()) { // Reverse to get newest first
+    for (let i = 0; i < events.length; i++) {
+      const event = events[events.length - 1 - i]; // Reverse to get newest first
+      
       if ('args' in event && event.args) {
         const [, , tokenId] = event.args;
         
-        console.log(`Processing tokenId ${tokenId}...`);
+        console.log(`Processing tokenId ${tokenId}... (${i + 1}/${totalEvents})`);
         
         // Try to get metadata from the contract
         let incidentTitle = `Incident #${tokenId}`;
@@ -89,11 +148,15 @@ const fetchIncidentsFromBlockchain = async (): Promise<Incident[]> => {
         let incidentLogs = 'Log data stored off-chain';
         let incidentSeverity: 'info' | 'warning' | 'critical' = 'info';
         
+        // Get block timestamp and owner in parallel
+        const [block, owner, encryptedURI, tokenURI] = await Promise.all([
+          event.getBlock(),
+          contract.ownerOf(tokenId).catch(() => null),
+          contract.getEncryptedURI(tokenId).catch(() => null),
+          contract.tokenURI(tokenId).catch(() => null)
+        ]);
+        
         try {
-          // Try to get encrypted URI first (iNFT), then fall back to tokenURI
-          const encryptedURI = await contract.getEncryptedURI(tokenId).catch(() => null);
-          const tokenURI = await contract.tokenURI(tokenId).catch(() => null);
-          
           const uri = encryptedURI || tokenURI;
           
           if (uri) {
@@ -156,17 +219,7 @@ const fetchIncidentsFromBlockchain = async (): Promise<Incident[]> => {
           console.warn(`Could not fetch metadata for token ${tokenId}:`, metadataError);
         }
         
-        // Get block timestamp
-        const block = await event.getBlock();
         const blockTimestamp = new Date(block.timestamp * 1000).toISOString();
-        
-        // Try to get the owner
-        let owner: string | null = null;
-        try {
-          owner = await contract.ownerOf(tokenId);
-        } catch {
-          // Token may have been burned
-        }
         
         const incident: Incident = {
           id: `incident-${tokenId}`,
@@ -190,6 +243,11 @@ const fetchIncidentsFromBlockchain = async (): Promise<Incident[]> => {
         });
         
         incidents.push(incident);
+        
+        // Call progress callback to enable progressive rendering
+        if (onProgress) {
+          onProgress(incident, i + 1, totalEvents);
+        }
       }
     }
     
