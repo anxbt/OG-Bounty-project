@@ -41,13 +41,14 @@ class AttestationManager {
     };
 
     // Upload to 0G Storage
-    const attestationUri = await this.storage.uploadToOG(
+    const uploadResult = await this.storage.uploadToOG(
       JSON.stringify(signedAttestation),
       'attestation.json'
     );
 
     return {
-      attestationUri,
+      attestationUri: uploadResult?.uri || uploadResult,
+      storageMetadata: uploadResult,
       hash,
       signature,
       signer: this.signerAddress,

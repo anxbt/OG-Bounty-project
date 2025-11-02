@@ -1,6 +1,6 @@
-// 0G iNFT Contract (with Oracle integration)
-export const INFT_CONTRACT_ADDRESS = '0x5Ea36756B36dd41622b9C41FcD1a137f96954A06';
-export const ORACLE_ADDRESS = '0x84c8542d439dA3cA5CaBE76b303444f66f190Db5';
+// 0G iNFT Contract (with Oracle integration) - Deployed Oct 29, 2025
+export const INFT_CONTRACT_ADDRESS = '0xeB18a3f355EA68f303eB06E8d7527773aCa6b398';
+export const ORACLE_ADDRESS = '0x59bec759cbE4154626D98D86341E49759087b317';
 
 // Legacy contract (standard ERC721)
 export const LEGACY_CONTRACT_ADDRESS = '0x455163a08a8E786730607C5B1CC4E587837a1F57';

@@ -6,21 +6,20 @@ import { computeAnalytics } from './computeAnalytics.js';
 import AttestationManager from './attestationManager.js';
 import { ethers } from 'ethers';
 import { analyzeWithGemini, isGeminiAvailable } from './geminiAnalytics.js';
+import computeProper from './computeProper.js';
 
 const PORT = process.env.PORT || 8787;
 
-// Try to import 0G Compute SDK (optional)
+// Try to import legacy 0G Compute (for fallback)
 let computeAnalyticsZG = null;
 let USE_REAL_0G_COMPUTE = false;
 
 try {
   const module = await import('./computeAnalyticsZG.js');
   computeAnalyticsZG = module.default;
-  USE_REAL_0G_COMPUTE = process.env.USE_0G_COMPUTE !== 'false'; // Enabled if SDK available
-  console.log('✅ 0G Compute SDK loaded successfully');
+  console.log('✅ Legacy 0G Compute SDK available as secondary fallback');
 } catch (error) {
-  console.log('ℹ️  0G Compute SDK not available, using simulated analytics');
-  console.log('   To enable: npm install @0glabs/0g-serving-broker crypto-js --legacy-peer-deps');
+  console.log('ℹ️  Legacy 0G Compute SDK not available');
 }
 
 // In-memory storage for incidents (in production, use a database)
@@ -139,6 +138,8 @@ try {
   const INFT_ABI = [
     "function addAttestation(uint256 tokenId, bytes32 hash, string calldata uri) external",
     "function getAttestations(uint256 tokenId) external view returns (tuple(bytes32 hash, string uri, address signer, uint64 timestamp)[])",
+    "function getEncryptedURI(uint256 tokenId) external view returns (string memory)",
+    "function ownerOf(uint256 tokenId) external view returns (address)",
     "event IncidentAttested(uint256 indexed tokenId, bytes32 indexed hash, address indexed signer, string uri, uint64 timestamp)"
   ];
   
@@ -260,47 +261,122 @@ const server = http.createServer((req, res) => {
     
     // Start async job
     (async () => {
+      const aiErrors = [];
+
       try {
         if (!attestationManager) {
           throw new Error('Attestation Manager not initialized');
         }
 
         // Get incident from store (try both token_id and tokenId)
-        const incident = Array.from(incidentStore.values())
+        let incident = Array.from(incidentStore.values())
           .find(inc => inc.token_id === tokenId || inc.tokenId === tokenId);
         
+        // Fetch the incident from blockchain
         if (!incident) {
-          throw new Error(`Incident with token ${tokenId} not found in store`);
+          console.log(`🔍 Incident ${tokenId} not in memory, fetching from blockchain...`);
+          try {
+            // Get the encrypted URI using the correct function name
+            const uri = await contract.getEncryptedURI(tokenId);
+            if (!uri) {
+              throw new Error(`Token ${tokenId} has no URI`);
+            }
+            
+            // Download metadata from 0G Storage
+            const storage = new OGStorageManager();
+            const metadataStr = await storage.downloadFromOG(uri);
+            const metadata = JSON.parse(metadataStr);
+            
+            // Get token owner
+            const owner = await contract.ownerOf(tokenId);
+            
+            // Download logs if logUri is provided
+            let incidentLogs = '';
+            if (metadata.logUri && metadata.logUri.startsWith('0g://')) {
+              console.log(`   📥 Downloading logs from: ${metadata.logUri.substring(0, 50)}...`);
+              try {
+                const logsStr = await storage.downloadFromOG(metadata.logUri);
+                incidentLogs = logsStr;
+              } catch (logsErr) {
+                console.warn(`   ⚠️  Failed to download logs:`, logsErr.message);
+                incidentLogs = metadata.logs || 'Logs unavailable';
+              }
+            } else if (metadata.logs) {
+              incidentLogs = metadata.logs;
+            }
+            
+            incident = {
+              token_id: tokenId,
+              tokenId: tokenId, // Keep both for compatibility
+              title: metadata.name || 'Untitled Incident',
+              description: metadata.description || '',
+              logs: incidentLogs,
+              severity: metadata.severity === 'critical' || metadata.severity === 2 ? 'critical' : 
+                       metadata.severity === 'warning' || metadata.severity === 1 ? 'warning' : 'info',
+              timestamp: new Date(metadata.timestamp * 1000).toISOString(),
+              owner: owner,
+              log_hash: uri.split('0g://')[1]
+            };
+            
+            console.log(`✅ Fetched incident from blockchain: ${incident.title}`);
+          } catch (fetchError) {
+            console.error('❌ Failed to fetch from blockchain:', fetchError);
+            throw new Error(`Incident with token ${tokenId} not found (not in memory and couldn't fetch from chain)`);
+          }
+        } else {
+          console.log(`📋 Found incident in memory: ${incident.title}`);
         }
 
-        console.log(`📋 Found incident: ${incident.title}`);
-
-        // Query 0G Compute
-        const prompt = `Analyze this AI incident and provide a concise summary and severity score:
+        // Query 0G Compute with enhanced prompt
+        const prompt = `Analyze this AI incident and explain WHY it was flagged:
+          
           Title: ${incident.title}
           Description: ${incident.description}
+          Logs: ${incident.logs ? incident.logs.substring(0, 500) : 'No logs available'}
           
           Return in JSON format with:
           {
-            "summary": "1-2 sentence explanation",
+            "summary": "1-2 sentence explanation of what happened",
             "severityScore": number from 1-10,
-            "analysis": "detailed findings"
+            "analysis": "detailed technical findings",
+            "flagReason": "Human-readable explanation of WHY this incident matters (e.g., model mismatch, safety violation, bias detected)",
+            "technicalDetails": "Deeper technical explanation for experts",
+            "categories": ["category1", "category2"]
           }`;
 
-        console.log('🤖 Requesting 0G Compute analysis...');
-        let aiResponse;
-        let aiSummary;
-        let analysisSource = '0G Compute';
+    console.log('🤖 Requesting AI analysis...');
+    let aiResponse;
+    let aiSummary;
+    let analysisSource = 'Fallback';
         
+        // PRIMARY: Try proper 0G Compute Network (new SDK)
         try {
-          // PRIMARY: Try 0G Compute first
-          aiResponse = await computeAnalyticsZG.queryComputeModel(prompt);
-          aiSummary = JSON.parse(aiResponse);
-          console.log('✅ 0G Compute analysis successful');
-        } catch (computeError) {
-          console.warn('⚠️ 0G Compute unavailable:', computeError.message);
+          console.log('🔬 Attempting 0G Compute Network (SDK)...');
+          aiResponse = await computeProper.queryComputeNetwork(prompt);
+          aiSummary = computeProper.parseAnalysis(aiResponse);
+          analysisSource = '0G Compute Network';
+          console.log('✅ 0G Compute Network analysis successful');
+        } catch (properComputeErr) {
+          console.warn('⚠️ 0G Compute Network unavailable:', properComputeErr.message);
+          aiErrors.push(properComputeErr);
           
-          // FALLBACK 1: Try Gemini AI
+          // FALLBACK 1: Try legacy 0G Compute
+          if (computeAnalyticsZG) {
+            try {
+              console.log('🔧 Attempting legacy 0G Compute...');
+              aiResponse = await computeAnalyticsZG.queryComputeModel(prompt);
+              aiSummary = JSON.parse(aiResponse);
+              analysisSource = '0G Compute (legacy)';
+              console.log('✅ Legacy 0G Compute analysis successful');
+            } catch (legacyErr) {
+              console.warn('⚠️ Legacy 0G Compute failed:', legacyErr.message);
+              aiErrors.push(legacyErr);
+            }
+          }
+        }
+        
+        // FALLBACK 2: Gemini AI
+        if (!aiSummary) {
           if (isGeminiAvailable()) {
             try {
               console.log('🔮 Falling back to Gemini AI...');
@@ -309,19 +385,22 @@ const server = http.createServer((req, res) => {
               console.log('✅ Gemini analysis successful');
             } catch (geminiError) {
               console.warn('⚠️ Gemini also failed:', geminiError.message);
-              throw new Error('Both 0G Compute and Gemini unavailable');
+              aiErrors.push(geminiError);
+              // Continue to basic fallback
             }
-          } else {
-            // FALLBACK 2: Basic analysis
-            console.log('📊 Using basic analysis fallback');
-            aiSummary = {
-              summary: `${incident.title}. ${incident.description.substring(0, 100)}...`,
-              severityScore: incident.severity === 'critical' ? 9 : incident.severity === 'warning' ? 6 : 3,
-              analysis: 'Automated analysis based on incident metadata',
-              categories: [incident.severity, 'ai-safety']
-            };
-            analysisSource = 'Basic fallback';
           }
+        }
+        
+        // FALLBACK 3: Basic analysis
+        if (!aiSummary) {
+          console.log('📊 Using basic analysis fallback');
+          aiSummary = {
+            summary: `${incident.title}. ${incident.description.substring(0, 100)}...`,
+            severityScore: incident.severity === 'critical' ? 9 : incident.severity === 'warning' ? 6 : 3,
+            analysis: 'Automated analysis based on incident metadata',
+            categories: [incident.severity, 'ai-safety']
+          };
+          analysisSource = 'Basic fallback';
         }
         
         // Add incident context to summary
@@ -359,7 +438,8 @@ const server = http.createServer((req, res) => {
         console.error('❌ Attestation failed:', error);
         attestationJobs.set(jobId, {
           status: 'failed',
-          error: error.message || String(error)
+          error: error.message || String(error),
+          chain: aiErrors.map((err) => err.message)
         });
       }
     })();
@@ -381,6 +461,245 @@ const server = http.createServer((req, res) => {
     
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify(job || { status: 'not-found' }));
+    return;
+  }
+
+  // Health check endpoint for monitoring AI services
+  if (req.method === "GET" && req.url === '/api/health') {
+    const health = {
+      timestamp: new Date().toISOString(),
+      services: {
+        compute: {
+          primary: computeProper.isBrokerAvailable() ? 'active' : 'unavailable',
+          legacy: computeAnalyticsZG ? 'available' : 'unavailable',
+          status: computeProper.isBrokerAvailable() ? 'operational' : 'needs funding'
+        },
+        gemini: {
+          status: isGeminiAvailable() ? 'active' : 'unavailable',
+          model: 'gemini-1.5-flash',
+          configured: !!process.env.GEMINI_API_KEY
+        },
+        storage: {
+          status: 'active',
+          provider: '0G Storage Network'
+        },
+        blockchain: {
+          status: 'active',
+          network: process.env.CHAIN_ID || '16602',
+          contract: process.env.INFT_ADDRESS || process.env.INCIDENT_NFT_ADDRESS || 'Not set'
+        }
+      },
+      fallbackChain: ['0G Compute (SDK)', 'Legacy 0G Compute', 'Gemini AI', 'Basic fallback']
+    };
+    
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(health));
+    return;
+  }
+
+  // VISA: Recompute/reproducibility endpoint
+  const recomputeCache = new Map(); // Simple in-memory cache
+  const recomputeRateLimit = new Map(); // Rate limiting: tokenId -> timestamp
+  
+  if (req.method === "POST" && req.url.match(/^\/api\/incident\/\d+\/recompute$/)) {
+    const tokenId = parseInt(req.url.split('/')[3]);
+    
+    (async () => {
+      try {
+      // Rate limiting: max 1 per 5 minutes per incident
+      const lastRun = recomputeRateLimit.get(tokenId);
+      if (lastRun && Date.now() - lastRun < 5 * 60 * 1000) {
+        const waitTime = Math.ceil((5 * 60 * 1000 - (Date.now() - lastRun)) / 1000);
+        res.writeHead(429, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({
+          error: 'Rate limit exceeded',
+          message: `Please wait ${waitTime}s before re-running`,
+          retryAfter: waitTime
+        }));
+        return;
+      }
+
+      // Check cache first (30min TTL)
+      const cached = recomputeCache.get(tokenId);
+      if (cached && Date.now() - cached.timestamp < 30 * 60 * 1000) {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({
+          ...cached.data,
+          cached: true,
+          cacheAge: Math.floor((Date.now() - cached.timestamp) / 1000)
+        }));
+        return;
+      }
+
+      console.log(`🔄 Recomputing incident ${tokenId}...`);
+      
+      // Fetch incident (same logic as attestation)
+      let incident = Array.from(incidentStore.values())
+        .find(inc => inc.token_id === tokenId || inc.tokenId === tokenId);
+      
+      if (!incident) {
+        const uri = await contract.getEncryptedURI(tokenId);
+        if (!uri) {
+          throw new Error(`Token ${tokenId} not found`);
+        }
+        
+        const storage = new OGStorageManager();
+        const metadataStr = await storage.downloadFromOG(uri);
+        const metadata = JSON.parse(metadataStr);
+        const owner = await contract.ownerOf(tokenId);
+        
+        let incidentLogs = '';
+        if (metadata.logUri && metadata.logUri.startsWith('0g://')) {
+          try {
+            incidentLogs = await storage.downloadFromOG(metadata.logUri);
+          } catch {
+            incidentLogs = metadata.logs || 'Logs unavailable';
+          }
+        } else if (metadata.logs) {
+          incidentLogs = metadata.logs;
+        }
+        
+        incident = {
+          token_id: tokenId,
+          tokenId: tokenId,
+          title: metadata.name || 'Untitled Incident',
+          description: metadata.description || '',
+          logs: incidentLogs,
+          severity: metadata.severity === 'critical' || metadata.severity === 2 ? 'critical' : 
+                   metadata.severity === 'warning' || metadata.severity === 1 ? 'warning' : 'info',
+          timestamp: new Date(metadata.timestamp * 1000).toISOString(),
+          owner: owner,
+          log_hash: uri.split('0g://')[1]
+        };
+      }
+
+      // Run AI analysis (same multi-tier fallback)
+      const prompt = `Analyze this AI incident and provide a concise summary and severity score:
+        Title: ${incident.title}
+        Description: ${incident.description}
+        
+        Return in JSON format with:
+        {
+          "summary": "1-2 sentence explanation",
+          "severityScore": number from 1-10,
+          "analysis": "detailed findings"
+        }`;
+
+      let aiResponse;
+      let aiSummary;
+      let analysisSource = 'Unknown';
+      
+      // Try 0G Compute first
+      try {
+        console.log('🔬 Recompute: Attempting 0G Compute Network (SDK)...');
+        aiResponse = await computeProper.queryComputeNetwork(prompt);
+        aiSummary = computeProper.parseAnalysis(aiResponse);
+        analysisSource = '0G Compute Network';
+      } catch (err1) {
+        console.warn('⚠️ Recompute: 0G Compute unavailable');
+        
+        // Try legacy
+        if (computeAnalyticsZG) {
+          try {
+            aiResponse = await computeAnalyticsZG.queryComputeModel(prompt);
+            aiSummary = JSON.parse(aiResponse);
+            analysisSource = '0G Compute (legacy)';
+          } catch (err2) {
+            console.warn('⚠️ Recompute: Legacy 0G Compute failed');
+          }
+        }
+        
+        // Try Gemini
+        if (!aiSummary && isGeminiAvailable()) {
+          try {
+            console.log('🔮 Recompute: Falling back to Gemini AI...');
+            aiSummary = await analyzeWithGemini(incident);
+            analysisSource = 'Gemini AI (fallback)';
+          } catch (err3) {
+            console.warn('⚠️ Recompute: Gemini also failed');
+          }
+        }
+        
+        // Basic fallback
+        if (!aiSummary) {
+          aiSummary = {
+            summary: `${incident.title}. ${incident.description.substring(0, 100)}...`,
+            severityScore: incident.severity === 'critical' ? 9 : incident.severity === 'warning' ? 6 : 3,
+            analysis: 'Automated analysis based on incident metadata'
+          };
+          analysisSource = 'Basic fallback';
+        }
+      }
+
+      const recomputedAnalysis = {
+        ...aiSummary,
+        analysisSource,
+        tokenId,
+        timestamp: new Date().toISOString()
+      };
+
+      // Get original attestation from chain (if exists)
+      let originalAnalysis = null;
+      try {
+        const attestations = await contract.getAttestations(tokenId);
+        if (attestations && attestations.length > 0) {
+          const latestAttestation = attestations[attestations.length - 1];
+          if (latestAttestation.attestationUri) {
+            const storage = new OGStorageManager();
+            const attestationStr = await storage.downloadFromOG(latestAttestation.attestationUri);
+            const attestationData = JSON.parse(attestationStr);
+            originalAnalysis = {
+              summary: attestationData.summary,
+              severityScore: attestationData.severityScore,
+              analysisSource: attestationData.analysisSource || 'Unknown',
+              timestamp: latestAttestation.timestamp || 'Unknown'
+            };
+          }
+        }
+      } catch (err) {
+        console.warn('⚠️ Could not fetch original attestation:', err.message);
+      }
+
+      // Compare
+      const comparison = {
+        original: originalAnalysis,
+        recomputed: recomputedAnalysis,
+        match: false,
+        reproducible: false,
+        matchPercentage: 0
+      };
+
+      if (originalAnalysis) {
+        const severityMatch = originalAnalysis.severityScore === recomputedAnalysis.severityScore;
+        const sourceMatch = originalAnalysis.analysisSource === recomputedAnalysis.analysisSource;
+        comparison.match = severityMatch;
+        comparison.reproducible = severityMatch && sourceMatch;
+        comparison.matchPercentage = severityMatch ? (sourceMatch ? 100 : 75) : 50;
+      }
+
+      // Cache result
+      recomputeCache.set(tokenId, {
+        data: comparison,
+        timestamp: Date.now()
+      });
+      
+      // Update rate limit
+      recomputeRateLimit.set(tokenId, Date.now());
+      
+      console.log(`✅ Recompute complete: ${comparison.matchPercentage}% match`);
+
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(comparison));
+      
+    } catch (error) {
+      console.error('❌ Recompute failed:', error);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        error: 'Recompute failed',
+        message: error.message
+      }));
+    }
+    })();
     return;
   }
 
