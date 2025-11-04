@@ -81,12 +81,93 @@ function mintIncident(incident, cb) {
 async function getIncidents(req, res) {
   try {
     // Return stored incidents from memory
-    const incidents = Array.from(incidentStore.values());
+    let incidents = Array.from(incidentStore.values());
     
-    console.log(`📦 Returning ${incidents.length} incidents from memory`);
+    console.log(`📦 Found ${incidents.length} incidents in memory`);
     
-    // If memory is empty, return empty array
-    // Frontend will fall back to blockchain query
+    // If memory is empty, try to load from blockchain
+    if (incidents.length === 0 && contract) {
+      console.log('🔄 Memory empty, loading incidents from blockchain...');
+      try {
+        // Query IncidentMinted events
+        const filter = contract.filters.IncidentMinted();
+        const DEPLOYMENT_BLOCK = 2286000; // INFT deployment block
+        const events = await contract.queryFilter(filter, DEPLOYMENT_BLOCK);
+        
+        console.log(`📡 Found ${events.length} minting events on blockchain`);
+        
+        const storage = new OGStorageManager();
+        
+        for (const event of events.reverse()) {
+          if ('args' in event && event.args) {
+            const [tokenId, , , severityNum, uri, timestamp] = event.args;
+            
+            try {
+              // Download metadata from 0G Storage
+              let title = `Incident #${tokenId}`;
+              let description = 'AI incident detected';
+              let logs = 'Log data stored off-chain';
+              let severity = ['info', 'warning', 'critical'][Number(severityNum)] || 'info';
+              
+              if (uri && uri.startsWith('0g://')) {
+                const metadataStr = await storage.downloadFromOG(uri);
+                const metadata = JSON.parse(metadataStr);
+                
+                title = metadata.name || metadata.title || title;
+                description = metadata.description || description;
+                
+                // Download logs if available
+                if (metadata.logUri && metadata.logUri.startsWith('0g://')) {
+                  try {
+                    logs = await storage.downloadFromOG(metadata.logUri);
+                  } catch (err) {
+                    logs = metadata.logs || logs;
+                  }
+                } else if (metadata.logs) {
+                  logs = metadata.logs;
+                }
+                
+                // Map severity
+                if (metadata.severity === 'critical' || metadata.severity === 2) severity = 'critical';
+                else if (metadata.severity === 'warning' || metadata.severity === 1) severity = 'warning';
+                else severity = 'info';
+              }
+              
+              const owner = await contract.ownerOf(tokenId);
+              
+              const incident = {
+                incidentId: `incident-${tokenId}`,
+                token_id: Number(tokenId),
+                tokenId: Number(tokenId),
+                title,
+                description,
+                logs,
+                severity,
+                timestamp: new Date(Number(timestamp) * 1000).toISOString(),
+                owner,
+                tx_hash: event.transactionHash,
+                log_hash: uri ? uri.split('0g://')[1] : '',
+                created_at: new Date(Number(timestamp) * 1000).toISOString()
+              };
+              
+              // Store in memory
+              incidentStore.set(incident.incidentId, incident);
+              
+            } catch (err) {
+              console.warn(`⚠️  Failed to process token ${tokenId}:`, err.message);
+            }
+          }
+        }
+        
+        incidents = Array.from(incidentStore.values());
+        console.log(`✅ Loaded ${incidents.length} incidents from blockchain into memory`);
+        
+      } catch (blockchainError) {
+        console.error('❌ Failed to load from blockchain:', blockchainError);
+        // Continue with empty array
+      }
+    }
+    
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify(incidents));
   } catch (error) {
@@ -140,7 +221,8 @@ try {
     "function getAttestations(uint256 tokenId) external view returns (tuple(bytes32 hash, string uri, address signer, uint64 timestamp)[])",
     "function getEncryptedURI(uint256 tokenId) external view returns (string memory)",
     "function ownerOf(uint256 tokenId) external view returns (address)",
-    "event IncidentAttested(uint256 indexed tokenId, bytes32 indexed hash, address indexed signer, string uri, uint64 timestamp)"
+    "event IncidentAttested(uint256 indexed tokenId, bytes32 indexed hash, address indexed signer, string uri, uint64 timestamp)",
+    "event IncidentMinted(uint256 indexed tokenId, string incidentId, string logHash, uint8 severity, string tokenURI, uint256 timestamp)"
   ];
   
   contract = new ethers.Contract(process.env.INFT_ADDRESS, INFT_ABI, wallet);

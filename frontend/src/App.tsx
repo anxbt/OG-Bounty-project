@@ -2,6 +2,8 @@ import { useState } from 'react';
 import LandingPage from './components/LandingPage';
 import IncidentDashboard from './components/IncidentDashboard';
 import AnalyticsDashboard from './components/AnalyticsDashboard';
+import NetworkIndicator from './components/NetworkIndicator';
+import NetworkSwitcher from './components/NetworkSwitcher';
 
 type Page = 'landing' | 'dashboard' | 'analytics';
 
@@ -19,6 +21,8 @@ function App() {
               <span className="text-2xl">🛡️</span>
               <span className="font-bold text-xl">iSentinel</span>
             </div>
+            
+            {/* Center Navigation */}
             <div className="flex gap-4">
               <button
                 onClick={() => setCurrentPage('dashboard')}
@@ -46,6 +50,12 @@ function App() {
               >
                 🏠 Home
               </button>
+            </div>
+
+            {/* Right side - Network Indicator & Switcher */}
+            <div className="flex items-center gap-2">
+              <NetworkSwitcher />
+              <NetworkIndicator />
             </div>
           </div>
         </div>

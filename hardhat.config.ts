@@ -41,7 +41,25 @@ const config: HardhatUserConfig = {
     og: {
       type: "http",
       chainType: "l1",
-      url: process.env.OG_RPC_URL || "",
+      url: process.env.OG_RPC_URL || "https://evmrpc-testnet.0g.ai",
+      accounts: (() => {
+        const pk = process.env.PRIVATE_KEY || "";
+        return /^0x[0-9a-fA-F]{64}$/.test(pk) ? [pk] : [];
+      })(),
+    },
+    "og-testnet": {
+      type: "http",
+      chainType: "l1",
+      url: "https://evmrpc-testnet.0g.ai",
+      accounts: (() => {
+        const pk = process.env.PRIVATE_KEY || "";
+        return /^0x[0-9a-fA-F]{64}$/.test(pk) ? [pk] : [];
+      })(),
+    },
+    "og-mainnet": {
+      type: "http",
+      chainType: "l1",
+      url: "https://evmrpc.0g.ai",
       accounts: (() => {
         const pk = process.env.PRIVATE_KEY || "";
         return /^0x[0-9a-fA-F]{64}$/.test(pk) ? [pk] : [];

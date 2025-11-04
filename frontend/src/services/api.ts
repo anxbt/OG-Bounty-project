@@ -252,10 +252,8 @@ const fetchIncidentsFromBlockchain = async (
     }
     
     console.log(`✅ Fetched ${incidents.length} incidents from blockchain`);
-    console.log(`📋 Sample incident data:`, incidents[0]);
     console.log(`⏱️ [COMPLETE] Blockchain fetch took ${Date.now() - startTime}ms`);
     
-    console.log(`🎯 [RETURN] Returning ${incidents.length} incidents (unfiltered)`);
     return incidents;
   } catch (error) {
     console.error('❌ [ERROR] Error fetching blockchain incidents:', error);

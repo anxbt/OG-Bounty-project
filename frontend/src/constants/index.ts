@@ -1,16 +1,57 @@
-// 0G iNFT Contract (with Oracle integration) - Deployed Oct 29, 2025
-export const INFT_CONTRACT_ADDRESS = '0xeB18a3f355EA68f303eB06E8d7527773aCa6b398';
-export const ORACLE_ADDRESS = '0x59bec759cbE4154626D98D86341E49759087b317';
+// Network configuration
+export const NETWORKS = {
+  TESTNET: {
+    name: '0G Galileo Testnet',
+    chainId: 16602,
+    rpcUrl: 'https://evmrpc-testnet.0g.ai',
+    explorerUrl: 'https://chainscan-galileo.0g.ai',
+    storageIndexer: 'https://indexer-storage-testnet.0g.ai',
+    symbol: '0G',
+    // Testnet contracts
+    contracts: {
+      inft: '0xeB18a3f355EA68f303eB06E8d7527773aCa6b398',
+      oracle: '0x59bec759cbE4154626D98D86341E49759087b317',
+      legacy: '0x455163a08a8E786730607C5B1CC4E587837a1F57'
+    }
+  },
+  MAINNET: {
+    name: '0G Mainnet',
+    chainId: 16661,
+    rpcUrl: 'https://evmrpc.0g.ai',
+    explorerUrl: 'https://chainscan.0g.ai',
+    storageIndexer: 'https://indexer-storage-turbo.0g.ai',
+    symbol: '0G',
+    // Mainnet contracts (Deployed Nov 3, 2025)
+    contracts: {
+      inft: '0xA75110a3d4DFA4F20B71ad87110a1A5FF3f58229',
+      oracle: '0x00fF3A9d6850CdcE1f4920FB029c60568314B36E',
+      legacy: ''
+    }
+  }
+} as const;
 
-// Legacy contract (standard ERC721)
-export const LEGACY_CONTRACT_ADDRESS = '0x455163a08a8E786730607C5B1CC4E587837a1F57';
+// Default network (for fallback and initial load)
+// Components should use useNetwork() hook for dynamic network selection
+export const ACTIVE_NETWORK = NETWORKS.MAINNET; // Default: Mainnet
 
-// Use iNFT by default
+// Helper function to get network config (for use in components without context)
+export function getActiveNetwork(): typeof NETWORKS.TESTNET | typeof NETWORKS.MAINNET {
+  const saved = localStorage.getItem('activeNetwork');
+  if (saved === 'TESTNET') return NETWORKS.TESTNET;
+  if (saved === 'MAINNET') return NETWORKS.MAINNET;
+  return ACTIVE_NETWORK; // fallback to default
+}
+
+// Backwards compatibility exports (use default/fallback values)
+// Note: For dynamic values, components should use useNetwork() hook
+const activeNetwork = getActiveNetwork();
+export const INFT_CONTRACT_ADDRESS = activeNetwork.contracts.inft;
+export const ORACLE_ADDRESS = activeNetwork.contracts.oracle;
+export const LEGACY_CONTRACT_ADDRESS = activeNetwork.contracts.legacy;
 export const CONTRACT_ADDRESS = INFT_CONTRACT_ADDRESS;
-
-export const RPC_URL = 'https://evmrpc-testnet.0g.ai';
-export const CHAIN_ID = 16602;
-export const EXPLORER_URL = 'https://chainscan-galileo.0g.ai';
+export const RPC_URL = activeNetwork.rpcUrl;
+export const CHAIN_ID = activeNetwork.chainId;
+export const EXPLORER_URL = activeNetwork.explorerUrl;
 
 export const BACKEND_API_URL = 'http://localhost:8787';
 

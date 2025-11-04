@@ -70,43 +70,87 @@ export default function AnalyticsDashboard() {
       setError(null);
       
       console.log('📊 Fetching incidents for analytics...');
+      console.log('🔗 Backend URL:', BACKEND_API_URL);
+      
+      // Health check first
+      try {
+        console.log('🏥 Checking backend health...');
+        const healthResponse = await fetch(`${BACKEND_API_URL}/health`, {
+          method: 'GET',
+          signal: AbortSignal.timeout(5000) // 5 second timeout
+        });
+        
+        if (!healthResponse.ok) {
+          throw new Error(`Backend health check failed: ${healthResponse.status}`);
+        }
+        
+        const healthData = await healthResponse.json();
+        console.log('✅ Backend is healthy:', healthData.msg);
+      } catch (healthError) {
+        console.error('❌ Backend health check failed:', healthError);
+        throw new Error('Backend is not responding. Please make sure the backend server is running on port 8787.');
+      }
       
       // First, fetch incidents (will use blockchain fallback since backend is empty)
-      const incidentsResponse = await fetch(`${BACKEND_API_URL}/incidents`);
       let incidents = [];
       
-      if (incidentsResponse.ok) {
-        incidents = await incidentsResponse.json();
-        console.log(`📦 Got ${incidents.length} incidents from backend`);
+      try {
+        console.log('🔍 Fetching from backend:', `${BACKEND_API_URL}/incidents`);
+        const incidentsResponse = await fetch(`${BACKEND_API_URL}/incidents`, {
+          method: 'GET',
+          headers: { 'Accept': 'application/json' }
+        });
         
-        // If backend has no incidents, fetch from blockchain
-        if (!incidents || incidents.length === 0) {
-          console.log('🔗 Backend empty, fetching from blockchain...');
+        if (incidentsResponse.ok) {
+          incidents = await incidentsResponse.json();
+          console.log(`📦 Got ${incidents.length} incidents from backend`);
+        }
+      } catch (backendError) {
+        console.warn('⚠️ Backend fetch failed, will use blockchain:', backendError);
+      }
+      
+      // If backend has no incidents, fetch from blockchain
+      if (!incidents || incidents.length === 0) {
+        console.log('🔗 Backend empty, fetching from blockchain...');
+        try {
           // Import and use the blockchain fetch function
           const { fetchIncidents } = await import('../services/api');
           incidents = await fetchIncidents();
           console.log(`✅ Got ${incidents.length} incidents from blockchain`);
+        } catch (blockchainError) {
+          console.error('❌ Blockchain fetch failed:', blockchainError);
+          // Continue with empty incidents array
         }
       }
       
       // Now compute analytics with real incident data
       console.log(`🧠 Computing analytics for ${incidents.length} incidents...`);
+      console.log('📤 Posting to:', `${BACKEND_API_URL}/analytics`);
+      
       const response = await fetch(`${BACKEND_API_URL}/analytics`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
         body: JSON.stringify({ incidents })
       });
       
+      console.log('📥 Response status:', response.status, response.statusText);
+      
       if (!response.ok) {
-        throw new Error('Failed to fetch analytics');
+        const errorText = await response.text();
+        console.error('❌ Analytics response error:', errorText);
+        throw new Error(`Failed to fetch analytics: ${response.status} ${response.statusText}`);
       }
       
       const data = await response.json();
-      console.log('✅ Analytics computed successfully');
+      console.log('✅ Analytics computed successfully:', data.jobId);
       setAnalytics(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
-      console.error('Error fetching analytics:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      console.error('❌ Error fetching analytics:', err);
+      setError(`Backend connection error: ${errorMessage}. Make sure backend is running on port 8787.`);
     } finally {
       setLoading(false);
     }
@@ -143,15 +187,35 @@ export default function AnalyticsDashboard() {
   if (error) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-6">
-          <h3 className="text-red-800 font-semibold">Error Loading Analytics</h3>
-          <p className="text-red-600 mt-2">{error}</p>
-          <button 
-            onClick={fetchAnalytics}
-            className="mt-4 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
-          >
-            Retry
-          </button>
+        <div className="bg-red-50 border-2 border-red-200 rounded-lg p-6">
+          <div className="flex items-start gap-3">
+            <span className="text-3xl">⚠️</span>
+            <div className="flex-1">
+              <h3 className="text-red-800 font-bold text-lg">Error Loading Analytics</h3>
+              <p className="text-red-700 mt-2 font-medium">{error}</p>
+              
+              {error.includes('Backend') && (
+                <div className="mt-4 p-4 bg-white rounded border border-red-200">
+                  <p className="text-sm font-semibold text-gray-900 mb-2">💡 How to start the backend:</p>
+                  <div className="bg-gray-900 text-green-400 p-3 rounded font-mono text-xs overflow-x-auto">
+                    <div>cd D:\0G</div>
+                    <div>node backend/serverOG.js</div>
+                  </div>
+                  <p className="text-xs text-gray-600 mt-2">
+                    The backend should start on <code className="bg-gray-100 px-1 py-0.5 rounded">http://localhost:8787</code>
+                  </p>
+                </div>
+              )}
+              
+              <button 
+                onClick={fetchAnalytics}
+                className="mt-4 px-6 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-colors flex items-center gap-2"
+              >
+                <span>🔄</span>
+                Retry Connection
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     );

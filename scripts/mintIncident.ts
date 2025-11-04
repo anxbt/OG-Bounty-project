@@ -19,7 +19,12 @@ export async function main() {
   // Parameters
   const incidentId = `incident-${Date.now()}`;
   const severity = 2; // 0 info,1 warning,2 critical
-  const rawLogs = `AI failure happened at ${new Date().toISOString()}\nDetails: mock stack trace...`;
+  
+  // Require real logs from environment variable - NO MOCK DATA
+  const rawLogs = process.env.INCIDENT_LOGS || process.env.INCIDENT_PAYLOAD;
+  if (!rawLogs || rawLogs.trim() === '') {
+    throw new Error('❌ Logs are required. Set INCIDENT_LOGS or INCIDENT_PAYLOAD environment variable with real incident data.');
+  }
 
   // Compute hash of raw logs
   const logHashBytes = createHash("keccak256");

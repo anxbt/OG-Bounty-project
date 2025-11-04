@@ -28,6 +28,13 @@ export default function ReportIncidentForm({ onClose, onSuccess }: ReportInciden
     setIsSubmitting(true);
     setError(null);
 
+    // Validate logs field is not empty or whitespace-only
+    if (!formData.logs || formData.logs.trim() === '') {
+      setError('Logs are required. Please provide real error logs, stack traces, or technical details.');
+      setIsSubmitting(false);
+      return;
+    }
+
     try {
       const result = await reportIncident(formData);
 
@@ -186,8 +193,11 @@ export default function ReportIncidentForm({ onClose, onSuccess }: ReportInciden
               onChange={(e) => setFormData({ ...formData, logs: e.target.value })}
               rows={6}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all resize-none font-mono text-sm"
-              placeholder="Paste error logs, stack traces, or other technical details..."
+              placeholder="Example:&#10;Error: Model output validation failed&#10;Expected: confidence > 0.95&#10;Actual: confidence = 0.67&#10;Timestamp: 2024-11-03T10:45:23Z&#10;Stack trace: at validate() line 42..."
             />
+            <p className="text-xs text-gray-500 mt-1">
+              💡 Real logs required - no mock data. Paste actual error messages, stack traces, or system logs.
+            </p>
           </div>
 
           <div className="grid md:grid-cols-2 gap-4">

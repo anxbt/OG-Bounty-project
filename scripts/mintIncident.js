@@ -69,7 +69,12 @@ function buildIncident(payload) {
   const severity = typeof severityKey === "number"
     ? Math.max(0, Math.min(2, severityKey))
     : severityMap[severityKey] ?? 2;
-  const logs = payload.logs || payload.message || `AI failure at ${now.toISOString()}\nDetails: mock stack trace...`;
+  
+  // Require real logs - NO MOCK DATA
+  const logs = payload.logs || payload.message;
+  if (!logs || logs.trim() === '') {
+    throw new Error('❌ Logs are required. Please provide real incident logs or error details.');
+  }
 
   return { incidentId, severity, logs };
 }

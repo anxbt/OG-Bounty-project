@@ -122,15 +122,35 @@ export const AttestationCard: React.FC<AttestationCardProps> = ({ tokenId, onCom
   };
 
   if (error) {
+    const isNotFound = error.includes('not found') || error.includes("couldn't fetch");
+    
     return (
       <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-        <h3 className="text-red-600 font-medium">Attestation Failed</h3>
-        <p className="text-red-500 text-sm">{error}</p>
+        <h3 className="text-red-600 font-medium flex items-center gap-2">
+          ⚠️ Attestation Failed
+        </h3>
+        <p className="text-red-700 text-sm mt-2">{error}</p>
+        
+        {isNotFound && (
+          <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded">
+            <p className="text-yellow-800 text-sm">
+              💡 <strong>Tip:</strong> This incident may not exist on the blockchain yet. 
+              To get an attestation:
+            </p>
+            <ol className="text-yellow-700 text-xs mt-2 ml-4 list-decimal space-y-1">
+              <li>Report a new incident through the "Report Incident" button</li>
+              <li>Wait for the transaction to be mined</li>
+              <li>View the incident in the dashboard</li>
+              <li>Click "🔐 Explain & Verify" to get AI attestation</li>
+            </ol>
+          </div>
+        )}
+        
         <button 
           onClick={() => setError(null)}
-          className="mt-2 text-sm text-red-600 hover:text-red-700"
+          className="mt-3 px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors"
         >
-          Try Again
+          Close
         </button>
       </div>
     );

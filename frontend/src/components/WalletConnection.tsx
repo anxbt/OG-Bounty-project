@@ -1,8 +1,9 @@
 import { Wallet, AlertTriangle, ExternalLink, Power } from 'lucide-react';
 import { useWallet } from '../hooks/useWallet';
-import { EXPLORER_URL } from '../constants';
+import { useNetwork } from '../contexts/NetworkContext';
 
 export default function WalletConnection() {
+  const { networkConfig } = useNetwork();
   const { 
     isConnected, 
     address, 
@@ -60,7 +61,7 @@ export default function WalletConnection() {
       {/* Connected Status */}
       <div className="flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg">
         <div className="w-2 h-2 bg-green-500 rounded-full" />
-        <span className="text-green-700 text-sm font-medium">0G Testnet</span>
+        <span className="text-green-700 text-sm font-medium">{networkConfig.name}</span>
       </div>
 
       {/* Address Display */}
@@ -70,7 +71,7 @@ export default function WalletConnection() {
           {formatAddress(address!)}
         </span>
         <a
-          href={`${EXPLORER_URL}/address/${address}`}
+          href={`${networkConfig.explorerUrl}/address/${address}`}
           target="_blank"
           rel="noopener noreferrer"
           className="text-gray-500 hover:text-blue-600 transition-colors"

@@ -333,6 +333,23 @@ export default function IncidentDetailModal({ incident, onClose }: IncidentDetai
 
           <div>
             <div className="text-sm font-medium text-gray-700 mb-2">Logs</div>
+            
+            {/* Warning for old mock data */}
+            {incident.logs.includes('mock stack trace') && (
+              <div className="mb-3 bg-yellow-50 border-l-4 border-yellow-400 p-3">
+                <div className="flex items-start gap-2">
+                  <span className="text-yellow-600 text-lg">⚠️</span>
+                  <div className="text-sm">
+                    <p className="text-yellow-800 font-medium mb-1">Legacy Test Data</p>
+                    <p className="text-yellow-700 text-xs">
+                      This incident was created before November 3, 2025 and contains placeholder test data. 
+                      New incidents now require real logs. <a href="/VIEW_REAL_LOGS_GUIDE.md" className="underline font-medium" target="_blank">Learn more →</a>
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+            
             <div className="bg-gray-900 rounded-lg p-4 font-mono text-xs text-green-400 overflow-x-auto max-h-64 overflow-y-auto">
               <pre className="whitespace-pre-wrap break-words">{incident.logs}</pre>
             </div>
